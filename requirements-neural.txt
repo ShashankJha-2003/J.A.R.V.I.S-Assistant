@@ -1,0 +1,32 @@
+# Optional Advanced Neural, Multimodal, Vision, RAG, IoT & Streaming Extensions
+# Install all or pick the modules you want:
+#   pip install -r requirements-neural.txt
+
+# A. Real-Time Streaming Orchestration Frameworks (WebRTC / Live Multimodal)
+# pipecat-ai>=0.0.50
+# livekit-agents>=0.12.0
+
+# B. Offline STT, Neural Wake Word & Neural VAD
+faster-whisper>=1.0.3
+vosk>=0.3.45
+pvporcupine>=3.0.0
+silero-vad>=5.1.2
+
+# C. Vector DB & Rich PDF / File-Watch RAG Extensions
+pypdf>=5.0.0
+watchdog>=4.0.0
+# chromadb>=0.5.0
+# qdrant-client>=1.11.0
+
+# D. Fast Local Neural TTS
+piper-tts>=1.2.0
+kokoro-onnx>=0.4.0
+
+# E. Vision (Fast Multi-Monitor Screen + Webcam) & Smart Home IoT
+mss>=9.0.1
+opencv-python>=4.10.0
+paho-mqtt>=2.1.0
+
+# F. Windows CoreAudio & Input Control
+pycaw>=20240210
+pynput>=1.7.7
