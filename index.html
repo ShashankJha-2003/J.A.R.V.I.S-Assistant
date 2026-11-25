@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J.A.R.V.I.S. — Interactive 360° Living Voice Avatar</title>
+  <link rel="stylesheet" href="./styles.css?v=28" />
+</head>
+<body>
+  <!-- Full-Viewport Canvas: Face 360° | Liquid Glass Orb | Spatial Halo | Floating Pill -->
+  <canvas id="avatarCanvas" aria-label="J.A.R.V.I.S. Real-Time Voice Interface"></canvas>
+
+  <!-- Subtle Top-Left Visual Mode Switcher -->
+  <div class="mode-switcher" id="modeSwitcher" role="tablist" aria-label="Visual Mode">
+    <button class="mode-pill active" data-mode="face">Face 360°</button>
+    <button class="mode-pill" data-mode="orb">Liquid Orb</button>
+    <button class="mode-pill" data-mode="halo">Spatial Halo</button>
+    <button class="mode-pill" data-mode="pill">Floating Pill</button>
+  </div>
+
+  <!-- Subtle Top-Right AI Brain Status & Live LLM Setup Trigger -->
+  <button class="brain-pill" id="btnAiBrain" title="Configure Gemini, OpenAI, Groq, or Local Ollama">
+    <span class="brain-dot" id="brainDot"></span>
+    <span id="brainPillLabel">🧠 Knowledge AI</span>
+  </button>
+
+  <!-- Liquid-Glass AI Brain Setup Modal (Connect Gemini / OpenAI / Groq / Ollama live) -->
+  <div class="llm-modal-backdrop hidden" id="llmModal">
+    <div class="llm-modal" role="dialog" aria-label="Configure AI Brain">
+      <div class="llm-modal-head">
+        <div>
+          <div class="llm-modal-title">🧠 AI Brain &amp; LLM Setup</div>
+          <div class="llm-modal-sub" id="llmCurrentStatus">Built-in Web Knowledge active (zero API key needed)</div>
+        </div>
+        <button class="bento-close" id="btnCloseLlm" title="Close">×</button>
+      </div>
+
+      <form class="llm-form" id="llmForm">
+        <label class="llm-field">
+          <span>Active AI Provider</span>
+          <select id="llmProviderSelect">
+            <option value="auto">Auto (Cloud LLM → Ollama → Built-in Web Knowledge)</option>
+            <option value="gemini">Google Gemini (gemini-2.5-flash)</option>
+            <option value="openai">OpenAI (gpt-4o-mini)</option>
+            <option value="groq">Groq (llama-3.3-70b-versatile)</option>
+            <option value="ollama">Local Ollama (100% Free Offline)</option>
+            <option value="offline">Offline Commands Only</option>
+          </select>
+        </label>
+
+        <div class="llm-group" id="groupGemini">
+          <label class="llm-field">
+            <span>Gemini API Key <em id="badgeGemini"></em></span>
+            <input type="password" id="inputGeminiKey" placeholder="AIza... (saved locally to .env)" autocomplete="off" />
+          </label>
+          <label class="llm-field">
+            <span>Gemini Model</span>
+            <input type="text" id="inputGeminiModel" value="gemini-2.5-flash" />
+          </label>
+        </div>
+
+        <div class="llm-group hidden" id="groupOpenai">
+          <label class="llm-field">
+            <span>OpenAI API Key <em id="badgeOpenai"></em></span>
+            <input type="password" id="inputOpenaiKey" placeholder="sk-... (saved locally to .env)" autocomplete="off" />
+          </label>
+          <label class="llm-field">
+            <span>OpenAI Model</span>
+            <input type="text" id="inputOpenaiModel" value="gpt-4o-mini" />
+          </label>
+        </div>
+
+        <div class="llm-group hidden" id="groupGroq">
+          <label class="llm-field">
+            <span>Groq API Key <em id="badgeGroq"></em></span>
+            <input type="password" id="inputGroqKey" placeholder="gsk_... (saved locally to .env)" autocomplete="off" />
+          </label>
+          <label class="llm-field">
+            <span>Groq Model</span>
+            <input type="text" id="inputGroqModel" value="llama-3.3-70b-versatile" />
+          </label>
+        </div>
+
+        <div class="llm-group hidden" id="groupOllama">
+          <label class="llm-field">
+            <span>Ollama URL <em id="badgeOllama"></em></span>
+            <input type="text" id="inputOllamaUrl" value="http://localhost:11434" />
+          </label>
+          <label class="llm-field">
+            <span>Ollama Model</span>
+            <input type="text" id="inputOllamaModel" value="llama3.2" />
+          </label>
+        </div>
+
+        <label class="llm-field">
+          <span>Persona &amp; Voice Tone</span>
+          <select id="llmPersonaSelect">
+            <option value="calm">Calm &amp; Natural (Warm poised assistant)</option>
+            <option value="crisp">Crisp Executive (Ultra-concise brevity)</option>
+            <option value="witty">Witty Stark-Style (Dry British charm)</option>
+            <option value="analytical">Analytical Engineer (Structured technical clarity)</option>
+          </select>
+        </label>
+
+        <div class="stack-chips" id="stackChips">
+          <span class="stack-chip">🧠 4 Sub-Agents</span>
+          <span class="stack-chip">🎙 Semantic Turn VAD</span>
+          <span class="stack-chip">👁 Screen Vision</span>
+          <span class="stack-chip">🔌 MCP JSON-RPC</span>
+          <span class="stack-chip">📚 PDF &amp; Code RAG</span>
+          <span class="stack-chip">⚡ Proactive Alerts</span>
+          <span class="stack-chip">💡 Smart Home IoT</span>
+        </div>
+
+        <div class="llm-feedback" id="llmFeedback"></div>
+
+        <div class="llm-actions">
+          <button type="submit" class="pill-btn primary" id="btnSaveLlm">✓ Save &amp; Activate</button>
+          <button type="button" class="pill-btn" id="btnTestLlm">⚡ Test Live</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Transient Liquid-Glass Bento Action Confirmation Card (Top-Right, appears on tool actions) -->
+  <div class="bento-card hidden" id="bentoCard">
+    <div class="bento-head">
+      <span class="bento-icon" id="bentoIcon">🚀</span>
+      <div class="bento-titles">
+        <div class="bento-title" id="bentoTitle">Action Completed</div>
+        <div class="bento-sub" id="bentoSub">Laptop Control</div>
+      </div>
+      <button class="bento-close" id="bentoClose" title="Dismiss">×</button>
+    </div>
+    <div class="bento-bar-wrap hidden" id="bentoBarWrap">
+      <div class="bento-bar-fill" id="bentoBarFill"></div>
+    </div>
+    <div class="bento-metrics" id="bentoMetrics"></div>
+    <a class="bento-open-btn hidden" id="bentoOpenBtn" href="#" target="_blank" rel="noopener">↗ Open Now</a>
+  </div>
+
+  <!-- Minimal Floating Voice Expression & Talk Controls Below the Portrait -->
+  <div class="voice-stage">
+    <div class="state-chip" id="stateChip">
+      <span class="pulse-dot" id="connDot"></span>
+      <span id="exprLabel">NEUTRAL</span>
+      <span class="state-sep">•</span>
+      <span id="stateLabel">STANDBY</span>
+      <button class="angle-chip hidden" id="btnResetAngle" title="Click or double-click portrait to face front">⟲ 0°</button>
+      <span class="tool-badge hidden" id="toolBadge"></span>
+    </div>
+
+    <!-- Live Real-Time Subtitles -->
+    <div class="live-you" id="liveYou"></div>
+    <div class="live-jarvis" id="liveJarvis">Hey there! Say "Hey Jarvis", click 💬 Chat to type, or drag to rotate 360°.</div>
+
+    <!-- Safety Confirmation Bar (Only for dangerous system commands) -->
+    <div class="confirm-bar hidden" id="confirmBar">
+      <span id="confirmText">Confirm action?</span>
+      <button class="pill-btn amber" id="btnConfirmYes">Confirm</button>
+      <button class="pill-btn" id="btnConfirmNo">Cancel</button>
+    </div>
+
+    <!-- Main Voice Control Dock -->
+    <div class="talk-dock">
+      <button class="pill-btn primary" id="btnTalk" title="Push-to-Talk (Click face or press Space)">
+        🎙 Talk
+      </button>
+      <button class="pill-btn" id="btnHandsFree" title="Continuous Hands-Free Conversation">
+        ⚡ Hands-Free
+      </button>
+      <button class="pill-btn" id="btnLocalMic" title="Use Local Python Microphone">
+        🖥 Py Mic
+      </button>
+      <button class="pill-btn active" id="btnVoice" title="Toggle Spoken Voice Output">
+        🔊 Voice ON
+      </button>
+      <button class="pill-btn danger" id="btnStop" title="Stop Speaking (Esc)">
+        ⏹ Stop
+      </button>
+      <button class="pill-btn" id="btnChatToggle" title="Open Typing Chat (/ or C)">
+        💬 Chat
+      </button>
+      <button class="pill-btn" id="btnVisionScreen" title="See &amp; Analyze My Screen (V)">
+        👁 Screen
+      </button>
+    </div>
+
+    <!-- Live Expression Bar (Triggers automatically while talking, or click to preview) -->
+    <div class="expr-strip" id="exprStrip">
+      <button class="expr-pill active" data-expr="neutral">Neutral</button>
+      <button class="expr-pill" data-expr="listening">Listening</button>
+      <button class="expr-pill" data-expr="thinking">Thinking</button>
+      <button class="expr-pill" data-expr="smiling">Smiling</button>
+      <button class="expr-pill" data-expr="happy">Happy</button>
+      <button class="expr-pill" data-expr="laughing">Laughing</button>
+      <button class="expr-pill" data-expr="serious">Serious</button>
+      <button class="expr-pill" data-expr="sad">Sad</button>
+      <button class="expr-pill" data-expr="angry">Angry</button>
+      <button class="expr-pill" data-expr="surprised">Surprised</button>
+    </div>
+  </div>
+
+  <!-- Translucent Liquid-Glass Typing Chat Drawer (Left Side, Never Covers Centered Face) -->
+  <aside class="chat-drawer hidden" id="chatDrawer" aria-label="Chat with J.A.R.V.I.S.">
+    <div class="chat-head">
+      <div class="chat-head-title">
+        <span>💬</span>
+        <span>Chat with J.A.R.V.I.S.</span>
+      </div>
+      <div class="chat-head-actions">
+        <button class="chat-mini-btn" id="btnClearChat" title="Clear chat history">Clear</button>
+        <button class="bento-close" id="btnCloseChat" title="Close Chat (Esc)">×</button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-typing hidden" id="chatTyping">J.A.R.V.I.S. is thinking...</div>
+    <form class="chat-form" id="chatForm">
+      <input
+        type="text"
+        id="chatInput"
+        placeholder="Type a message (e.g. 'Hey Jarvis', 'Open YouTube')..."
+        autocomplete="off"
+      />
+      <button type="submit" class="chat-send-btn" title="Send message">➤</button>
+    </form>
+  </aside>
+
+  <script>window.JARVIS_STATIC_MODE = true;</script>
+  <script src="./app.js?v=28"></script>
+</body>
+</html>
