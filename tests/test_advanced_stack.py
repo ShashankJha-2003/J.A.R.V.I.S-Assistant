@@ -233,6 +233,18 @@ def test_advanced_api_endpoints_mcp_turn_and_status(tmp_path: Path) -> None:
         mcp_st = client.get("/api/mcp/servers").json()
         assert mcp_st["protocol"] == "MCP JSON-RPC 2.0"
 
+        # All Voices Studio API (catalog + select persistence)
+        v_list = client.get("/api/voices").json()
+        assert v_list["total"] >= 17
+        v_sel = client.post(
+            "/api/voices/select",
+            json={"voice": "hi-IN-MadhurNeural", "rate": "+5%", "pitch": "-1Hz", "speak_confirmation": False},
+        ).json()
+        assert v_sel["ok"] is True
+        assert v_sel["active_voice"] == "hi-IN-MadhurNeural"
+        assert v_sel["rate"] == "+5%"
+        assert v_sel["pitch"] == "-1Hz"
+
 
 class _SpyChatLLM(BaseLLMProvider):
     name = "spy-llm"

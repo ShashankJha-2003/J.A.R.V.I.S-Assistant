@@ -100,6 +100,20 @@ class VisionFrameRequest(BaseModel):
     speak: bool = True
 
 
+class VoicePreviewRequest(BaseModel):
+    voice: str = Field(..., min_length=3, max_length=100)
+    text: str = Field(default="", max_length=400)
+    rate: str | None = None
+    pitch: str | None = None
+
+
+class VoiceSelectRequest(BaseModel):
+    voice: str = Field(..., min_length=3, max_length=100)
+    rate: str | None = None
+    pitch: str | None = None
+    speak_confirmation: bool = True
+
+
 class ConnectionManager:
     """Tracks active WebSocket HUD clients and broadcasts EventBus updates."""
 
@@ -390,6 +404,79 @@ def create_app(engine: JarvisEngine | None = None, start_background_tasks: bool 
         )
         return {"ok": True, "reply": reply, "path": str(snap_path)}
 
+    @app.get("/api/voices")
+    async def list_voices_api(refresh: bool = False) -> dict[str, Any]:
+        voices = await jarvis_engine.tts.list_all_voices(refresh=refresh)
+        active = "cloned" if jarvis_engine.config.cloned_voice_enabled else jarvis_engine.config.edge_tts_voice
+        return {
+            "voices": voices,
+            "total": len(voices),
+            "active_voice": active,
+            "edge_tts_voice": jarvis_engine.config.edge_tts_voice,
+            "hindi_tts_voice": jarvis_engine.config.hindi_tts_voice,
+            "rate": jarvis_engine.config.edge_tts_rate,
+            "pitch": jarvis_engine.config.edge_tts_pitch,
+            "tts_engine": jarvis_engine.tts.active_engine_name(),
+        }
+
+    @app.post("/api/voices/preview")
+    async def preview_voice_api(req: VoicePreviewRequest) -> dict[str, Any]:
+        return await jarvis_engine.tts.preview_voice(
+            voice_id=req.voice.strip(),
+            text=req.text,
+            rate=req.rate,
+            pitch=req.pitch,
+        )
+
+    @app.post("/api/voices/select")
+    async def select_voice_api(req: VoiceSelectRequest) -> dict[str, Any]:
+        vid = req.voice.strip()
+        updates: dict[str, Any] = {}
+        if vid == "cloned":
+            updates["cloned_voice_enabled"] = True
+            updates["edge_tts_voice"] = "en-IN-PrabhatNeural"
+        else:
+            updates["cloned_voice_enabled"] = False
+            updates["edge_tts_voice"] = vid
+            # If user explicitly chooses a Hindi voice (e.g. hi-IN-MadhurNeural / Swara), sync hindi_tts_voice too
+            if vid.lower().startswith("hi-"):
+                updates["hindi_tts_voice"] = vid
+        if req.rate is not None:
+            updates["edge_tts_rate"] = req.rate.strip()
+        if req.pitch is not None:
+            updates["edge_tts_pitch"] = req.pitch.strip()
+        applied = jarvis_engine.update_settings(updates)
+        await jarvis_engine.event_bus.publish(
+            EventType.SETTINGS_UPDATED,
+            {"applied": applied, "status": jarvis_engine.get_status()},
+            source="voice_studio",
+        )
+        voices = await jarvis_engine.tts.list_all_voices()
+        meta = next((v for v in voices if v["id"] == vid), None)
+        label = str(meta["name"]) if meta else vid
+        is_hi_voice = vid.lower().startswith("hi-")
+        confirm_text = (
+            f"बहुत बढ़िया! अब मैं {label} की आवाज़ में बात करूँगा।"
+            if is_hi_voice
+            else f"Awesome! I will keep {label}'s voice as my favourite voice from now on."
+        )
+        audio_payload: dict[str, Any] = {"audio_base64": None, "mime": "audio/mpeg", "visemes": []}
+        if req.speak_confirmation:
+            audio_payload = await jarvis_engine.tts.synthesize_speech_with_visemes(
+                confirm_text,
+                expression="happy",
+                voice_override=vid,
+            )
+        return {
+            "ok": True,
+            "active_voice": vid,
+            "name": label,
+            "rate": jarvis_engine.config.edge_tts_rate,
+            "pitch": jarvis_engine.config.edge_tts_pitch,
+            "text": confirm_text,
+            **audio_payload,
+        }
+
     @app.post("/api/settings")
     async def update_settings(updates: dict[str, Any]) -> dict[str, Any]:
         applied = jarvis_engine.update_settings(updates)
@@ -407,7 +494,7 @@ def create_app(engine: JarvisEngine | None = None, start_background_tasks: bool 
     async def websocket_hud(ws: WebSocket) -> None:
         await ws_manager.connect(ws)
         try:
-            hello_payload = {**jarvis_engine.get_status(), "ui_version": 31}
+            hello_payload = {**jarvis_engine.get_status(), "ui_version": 32}
             await ws.send_text(json.dumps({"type": "hello", "payload": hello_payload}, ensure_ascii=False, default=str))
             while True:
                 msg = await ws.receive_json()

@@ -97,6 +97,8 @@ class JarvisConfig:
     cloned_voice_path: Path = field(default_factory=lambda: PROJECT_ROOT / "My Voice.mpeg")
     edge_tts_voice: str = "en-IN-PrabhatNeural"
     hindi_tts_voice: str = "hi-IN-MadhurNeural"
+    edge_tts_rate: str = "+0%"
+    edge_tts_pitch: str = "+0Hz"
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "pNInz6obpgDQGcFmaJgB"
     cartesia_api_key: str = ""
@@ -197,6 +199,8 @@ class JarvisConfig:
             "cloned_voice_enabled",
             "edge_tts_voice",
             "hindi_tts_voice",
+            "edge_tts_rate",
+            "edge_tts_pitch",
             "tts_rate",
             "tts_volume",
             "speak_responses",
@@ -362,6 +366,8 @@ class JarvisConfig:
             cloned_voice_path=_resolve_path("JARVIS_CLONED_VOICE_PATH", "My Voice.mpeg"),
             edge_tts_voice=os.getenv("JARVIS_EDGE_TTS_VOICE", "en-IN-PrabhatNeural").strip(),
             hindi_tts_voice=os.getenv("JARVIS_HINDI_TTS_VOICE", "hi-IN-MadhurNeural").strip(),
+            edge_tts_rate=os.getenv("JARVIS_EDGE_TTS_RATE", "+0%").strip(),
+            edge_tts_pitch=os.getenv("JARVIS_EDGE_TTS_PITCH", "+0Hz").strip(),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
             elevenlabs_voice_id=os.getenv("JARVIS_ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB").strip(),
             cartesia_api_key=os.getenv("CARTESIA_API_KEY", "").strip(),

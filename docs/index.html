@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>J.A.R.V.I.S. — Interactive 360° Living Voice Avatar</title>
-  <link rel="stylesheet" href="./styles.css?v=31" />
+  <link rel="stylesheet" href="./styles.css?v=32" />
 </head>
 <body>
   <!-- Full-Viewport Canvas: Face 360° | Liquid Glass Orb | Spatial Halo | Floating Pill -->
@@ -185,6 +185,9 @@
       <button class="pill-btn active" id="btnVoice" title="Toggle Spoken Voice Output">
         🔊 Voice ON
       </button>
+      <button class="pill-btn" id="btnVoicesToggle" title="Browse, Play &amp; Select Your Favourite Voice">
+        🎧 Voices
+      </button>
       <button class="pill-btn" id="btnLangToggle" title="Switch Mic Recognition between Hinglish (EN-IN) and Hindi (HI-IN)">
         🌐 EN-IN
       </button>
@@ -239,7 +242,63 @@
     </form>
   </aside>
 
+  <!-- Translucent Liquid-Glass All-Voices Picker Drawer (Right Side, Works Local + GitHub Pages) -->
+  <aside class="voice-drawer hidden" id="voiceDrawer" aria-label="All Voices Studio">
+    <div class="chat-head">
+      <div class="chat-head-title">
+        <span>🎧</span>
+        <span>All Voices</span>
+        <span class="voice-count-pill" id="voiceCountPill">0</span>
+        <span class="voice-active-pill" id="voiceActivePill">🇮🇳 Prabhat</span>
+      </div>
+      <div class="chat-head-actions">
+        <button class="bento-close" id="btnCloseVoices" title="Close Voices (Esc)">×</button>
+      </div>
+    </div>
+
+    <div class="voice-controls">
+      <input
+        type="text"
+        class="voice-sample-input"
+        id="voiceSearchInput"
+        placeholder="🔍 Search all voices (India, Hindi, Male, Ryan, Madhur...)"
+        autocomplete="off"
+      />
+
+      <div class="voice-filters" id="voiceFilters">
+        <button class="voice-filter-pill active" data-filter="featured">⭐ Top Picks</button>
+        <button class="voice-filter-pill" data-filter="Indian">🇮🇳 India</button>
+        <button class="voice-filter-pill" data-filter="Male">Male</button>
+        <button class="voice-filter-pill" data-filter="Female">Female</button>
+        <button class="voice-filter-pill" data-filter="British">🇬🇧 UK</button>
+        <button class="voice-filter-pill" data-filter="American">🇺🇸 US</button>
+        <button class="voice-filter-pill" data-filter="all">🌍 All</button>
+      </div>
+
+      <div class="voice-sliders">
+        <label class="voice-slider-row">
+          <span>Speed <strong id="voiceRateVal">Normal</strong></span>
+          <input type="range" id="voiceRateRange" min="-20" max="25" step="5" value="0" />
+        </label>
+        <label class="voice-slider-row">
+          <span>Pitch <strong id="voicePitchVal">Natural</strong></span>
+          <input type="range" id="voicePitchRange" min="-6" max="6" step="1" value="0" />
+        </label>
+      </div>
+
+      <input
+        type="text"
+        class="voice-sample-input"
+        id="voiceSampleInput"
+        placeholder="Optional custom sentence to test (English or हिंदी)..."
+        autocomplete="off"
+      />
+    </div>
+
+    <div class="voice-list" id="voiceList"></div>
+  </aside>
+
   <script>window.JARVIS_STATIC_MODE = true;</script>
-  <script src="./app.js?v=31"></script>
+  <script src="./app.js?v=32"></script>
 </body>
 </html>

@@ -20,6 +20,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -38,6 +39,73 @@ try:
     import pyttsx3  # type: ignore
 except ImportError:
     pyttsx3 = None
+
+
+FEATURED_NEURAL_VOICES: list[dict[str, Any]] = [
+    {"id": "en-IN-PrabhatNeural", "name": "Prabhat", "gender": "Male", "locale": "en-IN", "accent": "Indian", "flag": "🇮🇳", "featured": True, "style": "Warm, clear Indian English male", "sample": "Hey there! I'm J.A.R.V.I.S. — how does this Indian male voice sound to you?"},
+    {"id": "hi-IN-MadhurNeural", "name": "Madhur", "gender": "Male", "locale": "hi-IN", "accent": "Indian", "flag": "🇮🇳", "featured": True, "style": "Natural Hindi & Hinglish male", "sample": "नमस्ते भाई! सब बढ़िया चल रहा है — ये आवाज़ कैसी लग रही है?"},
+    {"id": "hi-IN-SwaraNeural", "name": "Swara", "gender": "Female", "locale": "hi-IN", "accent": "Indian", "flag": "🇮🇳", "featured": True, "style": "Expressive Hindi & Hinglish female", "sample": "नमस्ते! मैं जार्विस हूँ — बताइए, आज मैं आपकी क्या मदद कर सकती हूँ?"},
+    {"id": "en-IN-NeerjaExpressiveNeural", "name": "Neerja Expressive", "gender": "Female", "locale": "en-IN", "accent": "Indian", "flag": "🇮🇳", "featured": True, "style": "Expressive, warm Indian English female", "sample": "Hey there! Everything is ready — how does this voice feel?"},
+    {"id": "en-GB-RyanNeural", "name": "Ryan", "gender": "Male", "locale": "en-GB", "accent": "British", "flag": "🇬🇧", "featured": True, "style": "Classic J.A.R.V.I.S. poised British male", "sample": "Good evening. All systems are online and ready whenever you are."},
+    {"id": "en-GB-ThomasNeural", "name": "Thomas", "gender": "Male", "locale": "en-GB", "accent": "British", "flag": "🇬🇧", "featured": True, "style": "Crisp, refined British male", "sample": "Right away! Everything looks sharp and ready for your next command."},
+    {"id": "en-GB-SoniaNeural", "name": "Sonia", "gender": "Female", "locale": "en-GB", "accent": "British", "flag": "🇬🇧", "featured": True, "style": "Articulate British female (F.R.I.D.A.Y. vibe)", "sample": "All systems nominal. Tell me what we are building today."},
+    {"id": "en-US-AndrewMultilingualNeural", "name": "Andrew", "gender": "Male", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Warm, confident, natural American male", "sample": "Hey! Good to see you — how is your day going so far?"},
+    {"id": "en-US-BrianMultilingualNeural", "name": "Brian", "gender": "Male", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Approachable, casual, friendly male", "sample": "Hey there! Sounds like a busy day — want to unwind or build something cool?"},
+    {"id": "en-US-ChristopherNeural", "name": "Christopher", "gender": "Male", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Deep, grounded, authoritative studio male", "sample": "Standing by. Give me the word and I will handle it right away."},
+    {"id": "en-US-GuyNeural", "name": "Guy", "gender": "Male", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Upbeat, expressive American male", "sample": "Hey! Love the energy today — what are we working on?"},
+    {"id": "en-US-SteffanNeural", "name": "Steffan", "gender": "Male", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Smooth, modern analytical male", "sample": "Everything is running cleanly. Ask me anything whenever you're ready."},
+    {"id": "en-US-AvaMultilingualNeural", "name": "Ava", "gender": "Female", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Expressive, caring, ultra-natural female", "sample": "Hey there! Tell me how your day has been, or let's get started."},
+    {"id": "en-US-EmmaMultilingualNeural", "name": "Emma", "gender": "Female", "locale": "en-US", "accent": "American", "flag": "🇺🇸", "featured": True, "style": "Cheerful, clear conversational female", "sample": "Hi! I'm all ears — what are we getting into today?"},
+    {"id": "en-AU-WilliamMultilingualNeural", "name": "William", "gender": "Male", "locale": "en-AU", "accent": "Australian", "flag": "🇦🇺", "featured": True, "style": "Friendly, upbeat Australian male", "sample": "Hey mate! Good to see you — what's on the agenda today?"},
+    {"id": "en-IE-ConnorNeural", "name": "Connor", "gender": "Male", "locale": "en-IE", "accent": "Irish", "flag": "🇮🇪", "featured": True, "style": "Warm, charming Irish male", "sample": "Hey there! Always glad to chat or lend a hand."},
+    {"id": "en-CA-LiamNeural", "name": "Liam", "gender": "Male", "locale": "en-CA", "accent": "Canadian", "flag": "🇨🇦", "featured": True, "style": "Friendly, crisp Canadian male", "sample": "Hey! Everything's ready to go — what's on your mind?"},
+]
+
+_LOCALE_FLAGS: dict[str, tuple[str, str]] = {
+    "IN": ("🇮🇳", "Indian"),
+    "GB": ("🇬🇧", "British"),
+    "US": ("🇺🇸", "American"),
+    "AU": ("🇦🇺", "Australian"),
+    "IE": ("🇮🇪", "Irish"),
+    "CA": ("🇨🇦", "Canadian"),
+    "NZ": ("🇳🇿", "New Zealand"),
+    "ZA": ("🇿🇦", "South African"),
+    "SG": ("🇸🇬", "Singapore"),
+    "JP": ("🇯🇵", "Japanese"),
+    "KR": ("🇰🇷", "Korean"),
+    "FR": ("🇫🇷", "French"),
+    "DE": ("🇩🇪", "German"),
+    "ES": ("🇪🇸", "Spanish"),
+    "IT": ("🇮🇹", "Italian"),
+    "BR": ("🇧🇷", "Brazilian"),
+    "CN": ("🇨🇳", "Chinese"),
+    "AE": ("🇦🇪", "Arabic"),
+    "RU": ("🇷🇺", "Russian"),
+}
+
+
+def _normalize_rate(rate: str | None) -> str:
+    raw = (rate or "+0%").strip()
+    if re.match(r"^[+-]?\d{1,2}%$", raw):
+        return raw if raw.startswith(("+", "-")) else f"+{raw}"
+    return "+0%"
+
+
+def _normalize_pitch(pitch: str | None) -> str:
+    raw = (pitch or "+0Hz").strip()
+    if re.match(r"^[+-]?\d{1,2}Hz$", raw, re.IGNORECASE):
+        val = raw[:-2]
+        return f"{val if val.startswith(('+', '-')) else '+' + val}Hz"
+    return "+0Hz"
+
+
+def _combine_delta(base_str: str, emo_str: str, unit: str, lo: int, hi: int) -> str:
+    def _num(s: str) -> int:
+        m = re.match(r"^([+-]?\d+)", (s or "0").strip())
+        return int(m.group(1)) if m else 0
+
+    total = max(lo, min(hi, _num(base_str) + _num(emo_str)))
+    return f"{'+' if total >= 0 else ''}{total}{unit}"
 
 
 def clean_text_for_speech(text: str) -> str:
@@ -166,6 +234,7 @@ class TTSEngine:
         self._active_mci_alias: str | None = None
         self._pyttsx_engine = None
         self._lock = asyncio.Lock()
+        self._all_voices_cache: list[dict[str, Any]] | None = None
         self.cloner = NeuralVoiceCloner(
             reference_audio_path=config.cloned_voice_path,
             models_dir=config.data_dir / "models" / "openvoice_v2",
@@ -243,20 +312,128 @@ class TTSEngine:
             except Exception:
                 pass
 
+    async def list_all_voices(self, *, refresh: bool = False) -> list[dict[str, Any]]:
+        """Return ALL available Microsoft Edge Neural voices (300+) + My Cloned Voice, featured first."""
+        if self._all_voices_cache is not None and not refresh:
+            return list(self._all_voices_cache)
+
+        voices: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        if self.cloner.is_available:
+            voices.append(
+                {
+                    "id": "cloned",
+                    "name": "My Real Voice (Cloned)",
+                    "gender": "Male",
+                    "locale": "en-IN / hi-IN",
+                    "accent": "Indian",
+                    "flag": "🎙",
+                    "featured": True,
+                    "style": "OpenVoice v2 neural clone of My Voice.mpeg (multi-emotional)",
+                    "sample": "Hey there! This is my own real cloned voice speaking live.",
+                }
+            )
+            seen.add("cloned")
+
+        for item in FEATURED_NEURAL_VOICES:
+            voices.append(dict(item))
+            seen.add(item["id"])
+
+        if edge_tts is not None:
+            try:
+                raw_list = await edge_tts.list_voices()
+                for rv in raw_list:
+                    vid = str(rv.get("ShortName") or "").strip()
+                    if not vid or vid in seen:
+                        continue
+                    seen.add(vid)
+                    locale = str(rv.get("Locale") or "")
+                    region = locale.split("-")[1].upper() if "-" in locale else ""
+                    flag, accent = _LOCALE_FLAGS.get(region, ("🌐", locale or "Global"))
+                    parts = vid.split("-")
+                    short_name = parts[-1].replace("Neural", "").replace("Multilingual", " Multi") if parts else vid
+                    gender = str(rv.get("Gender") or "Neutral")
+                    tags = (rv.get("VoiceTag") or {}).get("VoicePersonalities") or []
+                    friendly = str(rv.get("FriendlyName") or "")
+                    style = ", ".join(tags[:4]) if tags else (friendly.replace("Microsoft ", "").replace(" Online (Natural)", "") or f"{locale} {gender} neural")
+                    is_hi = locale.lower().startswith("hi-")
+                    sample = (
+                        f"नमस्ते! मैं {short_name} हूँ — यह आवाज़ कैसी लग रही है?"
+                        if is_hi
+                        else f"Hello! I'm {short_name} — testing this voice for J.A.R.V.I.S."
+                    )
+                    voices.append(
+                        {
+                            "id": vid,
+                            "name": short_name,
+                            "gender": gender,
+                            "locale": locale,
+                            "accent": accent,
+                            "flag": flag,
+                            "featured": False,
+                            "style": style,
+                            "sample": sample,
+                        }
+                    )
+            except Exception as exc:
+                logger.warning("Could not fetch full Edge voice catalog (%s); returning featured list.", exc)
+
+        self._all_voices_cache = voices
+        return list(voices)
+
+    async def preview_voice(
+        self,
+        voice_id: str,
+        text: str = "",
+        rate: str | None = None,
+        pitch: str | None = None,
+    ) -> dict[str, Any]:
+        """Audition ANY neural voice (or My Cloned Voice) live without changing saved settings."""
+        vid = (voice_id or "").strip()
+        catalog = await self.list_all_voices()
+        meta = next((v for v in catalog if v["id"] == vid), None)
+        sample_text = (text or "").strip() or (
+            str(meta["sample"]) if meta else "Hey there! I'm J.A.R.V.I.S. — how does this voice sound to you?"
+        )
+        res = await self.synthesize_speech_with_visemes(
+            sample_text,
+            expression="smiling",
+            voice_override=vid,
+            rate_override=rate,
+            pitch_override=pitch,
+        )
+        return {
+            "ok": bool(res.get("audio_base64")),
+            "voice": vid,
+            "name": str(meta["name"]) if meta else vid,
+            "flag": str(meta["flag"]) if meta else "🎧",
+            "text": sample_text,
+            "rate": _normalize_rate(rate if rate is not None else self.config.edge_tts_rate),
+            "pitch": _normalize_pitch(pitch if pitch is not None else self.config.edge_tts_pitch),
+            **res,
+        }
+
     async def _synth_edge_raw(
         self,
         spoken: str,
         *,
         voice: str,
         expression: str = "neutral",
+        rate_override: str | None = None,
+        pitch_override: str | None = None,
     ) -> tuple[bytes, list[tuple[int, int, str]]]:
         """Generate expressive Edge-TTS MP3 bytes + WordBoundary timestamps for a given emotion."""
         prof = get_emotion_voice_profile(expression)
+        base_rate = _normalize_rate(rate_override if rate_override is not None else self.config.edge_tts_rate)
+        base_pitch = _normalize_pitch(pitch_override if pitch_override is not None else self.config.edge_tts_pitch)
+        eff_rate = _combine_delta(base_rate, prof.rate, "%", -35, 45)
+        eff_pitch = _combine_delta(base_pitch, prof.pitch, "Hz", -12, 14)
         communicate = edge_tts.Communicate(
             spoken,
             voice=voice,
-            rate=prof.rate,
-            pitch=prof.pitch,
+            rate=eff_rate,
+            pitch=eff_pitch,
             volume=prof.volume,
             boundary="WordBoundary",
         )
@@ -279,45 +456,56 @@ class TTSEngine:
         text: str,
         *,
         expression: str = "neutral",
+        voice_override: str | None = None,
+        rate_override: str | None = None,
+        pitch_override: str | None = None,
     ) -> dict[str, object]:
-        """Generate multi-emotional speech audio + millisecond viseme timeline.
-
-        Default engine: Local OpenVoice v2 neural voice clone of `My Voice.mpeg`
-        layered over 10-emotion expressive prosody (`en-IN-PrabhatNeural` base).
-        """
+        """Generate multi-emotional speech audio + millisecond viseme timeline."""
         spoken = clean_text_for_speech(text)
         if not spoken:
             return {"audio_base64": None, "visemes": [], "mime": "audio/mpeg"}
 
-        engine = self.active_engine_name()
-        if engine == "elevenlabs" and self.config.elevenlabs_api_key:
-            res = await self._synth_elevenlabs(spoken)
-            if res.get("audio_base64"):
-                return res
-        if engine == "cartesia" and self.config.cartesia_api_key:
-            res = await self._synth_cartesia(spoken)
-            if res.get("audio_base64"):
-                return res
-        if engine == "piper":
-            res = await asyncio.to_thread(self._synth_piper, spoken)
-            if res.get("audio_base64"):
-                return res
+        if not voice_override:
+            engine = self.active_engine_name()
+            if engine == "elevenlabs" and self.config.elevenlabs_api_key:
+                res = await self._synth_elevenlabs(spoken)
+                if res.get("audio_base64"):
+                    return res
+            if engine == "cartesia" and self.config.cartesia_api_key:
+                res = await self._synth_cartesia(spoken)
+                if res.get("audio_base64"):
+                    return res
+            if engine == "piper":
+                res = await asyncio.to_thread(self._synth_piper, spoken)
+                if res.get("audio_base64"):
+                    return res
+        else:
+            engine = "cloned" if voice_override == "cloned" else "edge"
 
         if edge_tts is None:
             return {"audio_base64": None, "visemes": [], "mime": "audio/mpeg"}
 
-        use_cloner = engine == "cloned" and self.config.cloned_voice_enabled and self.cloner.is_available
+        use_cloner = (
+            (voice_override == "cloned" and self.cloner.is_available)
+            or (not voice_override and engine == "cloned" and self.config.cloned_voice_enabled and self.cloner.is_available)
+        )
         lang_style = detect_language_style(spoken)
         is_hi = lang_style in ("hindi", "hinglish")
-        hi_voice = self.config.hindi_tts_voice or "hi-IN-MadhurNeural"
-        en_voice = "en-IN-PrabhatNeural" if use_cloner else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
-        base_voice = hi_voice if is_hi else en_voice
-        source_key = "hi" if is_hi else "en"
+        if voice_override and voice_override != "cloned":
+            base_voice = voice_override
+            source_key = "hi" if voice_override.lower().startswith("hi-") else "en"
+        else:
+            hi_voice = self.config.hindi_tts_voice or "hi-IN-MadhurNeural"
+            en_voice = "en-IN-PrabhatNeural" if use_cloner else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
+            base_voice = hi_voice if is_hi else en_voice
+            source_key = "hi" if is_hi else "en"
         try:
             mp3_bytes, boundaries = await self._synth_edge_raw(
                 spoken,
                 voice=base_voice,
                 expression=expression,
+                rate_override=rate_override,
+                pitch_override=pitch_override,
             )
             if not mp3_bytes:
                 return {"audio_base64": None, "visemes": [], "mime": "audio/mpeg"}
