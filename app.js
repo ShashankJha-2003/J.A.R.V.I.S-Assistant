@@ -11,7 +11,7 @@
   const canvas = $("avatarCanvas");
   const ctx = canvas.getContext("2d");
 
-  const ASSET_VER = "31";
+  const ASSET_VER = "32";
   const TURNTABLE_COUNT = 72;
   const IS_STATIC_DEMO =
     Boolean(window.JARVIS_STATIC_MODE) ||
@@ -1201,6 +1201,14 @@
       ? cachedBrowserVoices
       : (window.speechSynthesis.getVoices() || []);
     if (!voices.length) return null;
+    // Honour user's saved favourite voice on static/GitHub Pages mode first
+    try {
+      const savedUri = localStorage.getItem("jarvis_static_voice_uri");
+      if (savedUri) {
+        const chosen = voices.find((v) => v.voiceURI === savedUri || v.name === savedUri);
+        if (chosen) return chosen;
+      }
+    } catch (_) {}
     const isFemaleName = (n) => /female|swara|neerja|heera|kalpana|zira|samantha|aria|jenny|sonia|libby|natasha|ava|emma|veena/i.test(n);
     const isMaleName = (n) => /prabhat|madhur|ravi|hemant|male|ryan|daniel|george|andrew|guy|david|mark|arjun/i.test(n);
     const score = (v) => {
@@ -1226,7 +1234,7 @@
     return [...voices].sort((a, b) => score(b) - score(a))[0] || null;
   }
 
-  function speakFallbackSynth(text, onDone) {
+  function speakFallbackSynth(text, onDone, explicitVoice = null, rateOverride = null, pitchOverride = null) {
     if (!("speechSynthesis" in window)) {
       onDone();
       return;
@@ -1234,11 +1242,11 @@
     try {
       const utter = new SpeechSynthesisUtterance(text);
       const isHindi = /[\u0900-\u097F]/.test(text);
-      utter.lang = isHindi ? "hi-IN" : "en-IN";
-      const preferred = pickIndianMaleBrowserVoice(isHindi);
+      const preferred = explicitVoice || pickIndianMaleBrowserVoice(isHindi);
+      utter.lang = (preferred && preferred.lang) || (isHindi ? "hi-IN" : "en-IN");
       if (preferred) utter.voice = preferred;
-      utter.rate = 0.98;
-      utter.pitch = 0.92;
+      utter.rate = rateOverride != null ? rateOverride : 0.98;
+      utter.pitch = pitchOverride != null ? pitchOverride : 0.92;
       utter.onend = onDone;
       utter.onerror = onDone;
       window.speechSynthesis.speak(utter);
@@ -2334,6 +2342,342 @@
   }
   if ($("btnTestLlm")) $("btnTestLlm").addEventListener("click", () => submitLlmConfig(true));
 
+  // =========================================================================
+  // 11. Interactive All-Voices Studio (Play & Select Favourite — Local + Pages)
+  // =========================================================================
+  const voiceStudio = {
+    voices: [],
+    activeVoice: "en-IN-PrabhatNeural",
+    filter: "featured",
+    query: "",
+    loadingId: null,
+    playingId: null,
+  };
+
+  function getStudioRateStr() {
+    const el = $("voiceRateRange");
+    const v = el ? parseInt(el.value, 10) || 0 : 0;
+    return `${v >= 0 ? "+" : ""}${v}%`;
+  }
+
+  function getStudioPitchStr() {
+    const el = $("voicePitchRange");
+    const v = el ? parseInt(el.value, 10) || 0 : 0;
+    return `${v >= 0 ? "+" : ""}${v}Hz`;
+  }
+
+  function syncStudioSliders() {
+    const r = $("voiceRateRange") ? parseInt($("voiceRateRange").value, 10) || 0 : 0;
+    const p = $("voicePitchRange") ? parseInt($("voicePitchRange").value, 10) || 0 : 0;
+    if ($("voiceRateVal")) $("voiceRateVal").textContent = r === 0 ? "Normal" : `${r > 0 ? "+" : ""}${r}%`;
+    if ($("voicePitchVal")) $("voicePitchVal").textContent = p === 0 ? "Natural" : `${p > 0 ? "+" : ""}${p}Hz`;
+  }
+
+  function updateVoiceHeaderPills() {
+    if ($("voiceCountPill")) $("voiceCountPill").textContent = `${voiceStudio.voices.length}`;
+    const pill = $("voiceActivePill");
+    if (!pill) return;
+    const found = voiceStudio.voices.find((v) => v.id === voiceStudio.activeVoice);
+    pill.textContent = found ? `${found.flag} ${found.name}` : voiceStudio.activeVoice;
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function buildBrowserVoiceCatalog() {
+    const raw = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+    const list = cachedBrowserVoices.length ? cachedBrowserVoices : raw;
+    const isFemale = (n) => /female|swara|neerja|heera|kalpana|zira|samantha|aria|jenny|sonia|libby|natasha|ava|emma|veena/i.test(n);
+    const isMale = (n) => /prabhat|madhur|ravi|hemant|male|ryan|daniel|george|andrew|guy|david|mark|arjun|brian|thomas/i.test(n);
+    const flagMap = { IN: ["🇮🇳", "Indian"], GB: ["🇬🇧", "British"], US: ["🇺🇸", "American"], AU: ["🇦🇺", "Australian"], CA: ["🇨🇦", "Canadian"], IE: ["🇮🇪", "Irish"] };
+    return list.map((v) => {
+      const lang = String(v.lang || "en-US");
+      const region = (lang.split("-")[1] || "").toUpperCase();
+      const [flag, accent] = flagMap[region] || ["🌐", lang];
+      const name = String(v.name || "Voice").replace(/^Microsoft\s+/i, "").replace(/\s+Online\s*\(Natural\)/i, "").trim();
+      const gender = isFemale(v.name) ? "Female" : isMale(v.name) ? "Male" : "Neutral";
+      const featured = /IN$|GB$|US$/i.test(lang) && /prabhat|madhur|ravi|hemant|swara|neerja|ryan|aria|guy|andrew|david|zira|google/i.test(v.name);
+      return {
+        id: v.voiceURI || v.name,
+        name,
+        gender,
+        locale: lang,
+        accent,
+        flag,
+        featured,
+        style: `${v.name} (${lang})`,
+        sample: /^hi/i.test(lang)
+          ? `नमस्ते भाई! मैं ${name} हूँ — यह आवाज़ कैसी लग रही है?`
+          : `Hey there! I'm ${name} — how does this voice sound for J.A.R.V.I.S.?`,
+        _browserVoice: v,
+      };
+    });
+  }
+
+  function renderVoiceStudio() {
+    const listEl = $("voiceList");
+    if (!listEl) return;
+    const q = (voiceStudio.query || "").toLowerCase().trim();
+    const f = voiceStudio.filter;
+    const filtered = voiceStudio.voices.filter((v) => {
+      if (q) {
+        const hay = `${v.name} ${v.id} ${v.accent} ${v.locale} ${v.gender} ${v.style}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      } else if (f === "featured") {
+        if (!v.featured) return false;
+      } else if (f === "Male" || f === "Female") {
+        if (v.gender !== f) return false;
+      } else if (f !== "all") {
+        if (v.accent !== f) return false;
+      }
+      return true;
+    });
+
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="voice-empty">No voices matched "${escapeHtml(q || f)}". Try clicking <strong>🌍 All</strong> or searching another accent.</div>`;
+      return;
+    }
+
+    // Cap initial DOM render smoothly to 120 items if unfiltered All (or full search results)
+    const shown = filtered.slice(0, q ? 160 : 120);
+    const extraNote =
+      filtered.length > shown.length
+        ? `<div class="voice-empty">Showing ${shown.length} of ${filtered.length} voices — type in the search bar above to find any language or name instantly.</div>`
+        : "";
+
+    listEl.innerHTML =
+      shown
+        .map((v) => {
+          const isActive = v.id === voiceStudio.activeVoice;
+          const isLoading = v.id === voiceStudio.loadingId;
+          const isPlaying = v.id === voiceStudio.playingId;
+          const playLbl = isLoading ? "⏳ Loading..." : isPlaying ? "🔊 Playing..." : "▶ Play";
+          const selLbl = isActive ? "★ Selected" : "✓ Select";
+          return `
+            <div class="voice-card ${isActive ? "active" : ""}" data-voice-id="${escapeHtml(v.id)}">
+              <div class="voice-card-top">
+                <div class="voice-card-name"><span>${escapeHtml(v.flag)}</span><span>${escapeHtml(v.name)}</span></div>
+                <span class="voice-card-meta">${escapeHtml(v.locale)} • ${escapeHtml(v.gender)}</span>
+              </div>
+              <div class="voice-card-style">${escapeHtml(v.style)}</div>
+              <div class="voice-card-actions">
+                <button type="button" class="voice-btn ${isPlaying ? "playing" : ""}" data-action="play" data-voice-id="${escapeHtml(v.id)}">${playLbl}</button>
+                <button type="button" class="voice-btn ${isActive ? "kept" : "keep"}" data-action="select" data-voice-id="${escapeHtml(v.id)}">${selLbl}</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("") + extraNote;
+  }
+
+  async function loadAllVoices() {
+    const listEl = $("voiceList");
+    if (listEl && !voiceStudio.voices.length) {
+      listEl.innerHTML = `<div class="voice-empty">Loading all available neural voices...</div>`;
+    }
+    if (IS_STATIC_DEMO) {
+      voiceStudio.voices = buildBrowserVoiceCatalog();
+      try {
+        const saved = localStorage.getItem("jarvis_static_voice_uri");
+        if (saved) voiceStudio.activeVoice = saved;
+        else {
+          const def = pickIndianMaleBrowserVoice(false);
+          if (def) voiceStudio.activeVoice = def.voiceURI || def.name;
+        }
+      } catch (_) {}
+      if (!voiceStudio.voices.some((v) => v.featured)) voiceStudio.filter = "all";
+      syncStudioSliders();
+      updateVoiceHeaderPills();
+      renderVoiceStudio();
+      return;
+    }
+
+    try {
+      const data = await fetch("/api/voices").then((r) => r.json());
+      voiceStudio.voices = Array.isArray(data.voices) ? data.voices : [];
+      if (data.active_voice) voiceStudio.activeVoice = data.active_voice;
+      if (data.rate && $("voiceRateRange")) {
+        $("voiceRateRange").value = String(parseInt(String(data.rate).replace("%", ""), 10) || 0);
+      }
+      if (data.pitch && $("voicePitchRange")) {
+        $("voicePitchRange").value = String(parseInt(String(data.pitch).replace(/hz/i, ""), 10) || 0);
+      }
+      syncStudioSliders();
+      updateVoiceHeaderPills();
+      renderVoiceStudio();
+    } catch (_) {
+      voiceStudio.voices = buildBrowserVoiceCatalog();
+      updateVoiceHeaderPills();
+      renderVoiceStudio();
+    }
+  }
+
+  async function playVoiceSample(voiceId) {
+    ensureAudioContext();
+    if (!avatar.speakEnabled) {
+      avatar.speakEnabled = true;
+      $("btnVoice").classList.add("active");
+      $("btnVoice").textContent = "🔊 Voice ON";
+    }
+    stopBrowserAudio();
+    const meta = voiceStudio.voices.find((v) => v.id === voiceId);
+    const customLine = $("voiceSampleInput") ? $("voiceSampleInput").value.trim() : "";
+
+    if (IS_STATIC_DEMO || (meta && meta._browserVoice)) {
+      const text = customLine || (meta && meta.sample) || "Hey there! How does this voice sound?";
+      const rPct = $("voiceRateRange") ? parseInt($("voiceRateRange").value, 10) || 0 : 0;
+      const pHz = $("voicePitchRange") ? parseInt($("voicePitchRange").value, 10) || 0 : 0;
+      voiceStudio.playingId = voiceId;
+      renderVoiceStudio();
+      $("liveJarvis").textContent = `🎧 ${meta ? `${meta.flag} ${meta.name}` : voiceId}: "${text}"`;
+      setExpression("smiling", 8000);
+      setState("speaking");
+      speakFallbackSynth(
+        text,
+        () => {
+          voiceStudio.playingId = null;
+          renderVoiceStudio();
+          if (avatar.state === "speaking") setState("idle");
+        },
+        meta ? meta._browserVoice : null,
+        Math.max(0.65, Math.min(1.5, 1.0 + rPct / 100)),
+        Math.max(0.65, Math.min(1.4, 0.96 + pHz * 0.04))
+      );
+      return;
+    }
+
+    voiceStudio.loadingId = voiceId;
+    voiceStudio.playingId = null;
+    renderVoiceStudio();
+    try {
+      const res = await fetch("/api/voices/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice: voiceId,
+          text: customLine,
+          rate: getStudioRateStr(),
+          pitch: getStudioPitchStr(),
+        }),
+      }).then((r) => r.json());
+      voiceStudio.loadingId = null;
+      if (res.ok && res.audio_base64) {
+        voiceStudio.playingId = voiceId;
+        renderVoiceStudio();
+        $("liveJarvis").textContent = `🎧 ${meta ? `${meta.flag} ${meta.name}` : voiceId}: "${res.text}"`;
+        await speakInBrowser(res.text, res.audio_base64, "smiling", res.mime || "audio/mpeg");
+        if (avatar.activeAudioEl) {
+          const prevEnded = avatar.activeAudioEl.onended;
+          avatar.activeAudioEl.onended = () => {
+            voiceStudio.playingId = null;
+            renderVoiceStudio();
+            if (prevEnded) prevEnded();
+          };
+        }
+      } else {
+        $("liveJarvis").textContent = "Could not synthesize that voice right now — try another voice.";
+        renderVoiceStudio();
+      }
+    } catch (_) {
+      voiceStudio.loadingId = null;
+      voiceStudio.playingId = null;
+      renderVoiceStudio();
+    }
+  }
+
+  async function selectFavouriteVoice(voiceId) {
+    ensureAudioContext();
+    stopBrowserAudio();
+    const meta = voiceStudio.voices.find((v) => v.id === voiceId);
+
+    if (IS_STATIC_DEMO || (meta && meta._browserVoice)) {
+      voiceStudio.activeVoice = voiceId;
+      try {
+        localStorage.setItem("jarvis_static_voice_uri", voiceId);
+      } catch (_) {}
+      updateVoiceHeaderPills();
+      renderVoiceStudio();
+      const confirmMsg = `Selected ${meta ? meta.name : voiceId} as your favourite voice!`;
+      $("liveJarvis").textContent = confirmMsg;
+      if (avatar.speakEnabled) {
+        setExpression("happy", 6000);
+        setState("speaking");
+        speakFallbackSynth(confirmMsg, () => {
+          if (avatar.state === "speaking") setState("idle");
+        }, meta ? meta._browserVoice : null);
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/voices/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice: voiceId,
+          rate: getStudioRateStr(),
+          pitch: getStudioPitchStr(),
+          speak_confirmation: avatar.speakEnabled,
+        }),
+      }).then((r) => r.json());
+      if (res.ok) {
+        voiceStudio.activeVoice = res.active_voice || voiceId;
+        voiceStudio.playingId = null;
+        updateVoiceHeaderPills();
+        renderVoiceStudio();
+        $("liveJarvis").textContent = res.text || `Selected ${res.name || voiceId} as your favourite voice!`;
+        if (avatar.speakEnabled && res.audio_base64) {
+          await speakInBrowser(res.text, res.audio_base64, "happy", res.mime || "audio/mpeg");
+        }
+      }
+    } catch (_) { }
+  }
+
+  function toggleVoiceDrawer(force) {
+    const drawer = $("voiceDrawer");
+    const btn = $("btnVoicesToggle");
+    if (!drawer) return;
+    const shouldOpen = typeof force === "boolean" ? force : drawer.classList.contains("hidden");
+    drawer.classList.toggle("hidden", !shouldOpen);
+    if (btn) btn.classList.toggle("active", shouldOpen);
+    if (shouldOpen) loadAllVoices();
+  }
+
+  if ($("btnVoicesToggle")) $("btnVoicesToggle").addEventListener("click", () => toggleVoiceDrawer());
+  if ($("btnCloseVoices")) $("btnCloseVoices").addEventListener("click", () => toggleVoiceDrawer(false));
+  if ($("voiceRateRange")) $("voiceRateRange").addEventListener("input", syncStudioSliders);
+  if ($("voicePitchRange")) $("voicePitchRange").addEventListener("input", syncStudioSliders);
+  if ($("voiceSearchInput")) {
+    $("voiceSearchInput").addEventListener("input", (e) => {
+      voiceStudio.query = e.target.value || "";
+      renderVoiceStudio();
+    });
+  }
+  if ($("voiceFilters")) {
+    $("voiceFilters").addEventListener("click", (e) => {
+      const btn = e.target.closest(".voice-filter-pill");
+      if (!btn || !btn.dataset.filter) return;
+      voiceStudio.filter = btn.dataset.filter;
+      document.querySelectorAll(".voice-filter-pill").forEach((p) => p.classList.toggle("active", p === btn));
+      renderVoiceStudio();
+    });
+  }
+  if ($("voiceList")) {
+    $("voiceList").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const vid = btn.dataset.voiceId;
+      if (!vid) return;
+      if (btn.dataset.action === "play") playVoiceSample(vid);
+      else if (btn.dataset.action === "select") selectFavouriteVoice(vid);
+    });
+  }
+
   $("btnConfirmYes").addEventListener("click", () => {
     if (avatar.pendingToken && avatar.ws) {
       avatar.ws.send(JSON.stringify({ type: "confirm", token: avatar.pendingToken, approved: true }));
@@ -2350,6 +2694,7 @@
     const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
     if (e.code === "Escape") {
       if ($("llmModal") && !$("llmModal").classList.contains("hidden")) $("llmModal").classList.add("hidden");
+      else if ($("voiceDrawer") && !$("voiceDrawer").classList.contains("hidden")) toggleVoiceDrawer(false);
       else if ($("chatDrawer") && !$("chatDrawer").classList.contains("hidden")) toggleChatDrawer(false);
       else interruptAll();
       return;
