@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 
+from jarvis.ai.supervisor import detect_language_style
 from jarvis.config import JarvisConfig
 from jarvis.voice.voice_cloner import NeuralVoiceCloner, get_emotion_voice_profile
 
@@ -68,8 +69,30 @@ _VISEME_RULES: list[tuple[str, str, float]] = [
 ]
 
 
+_DEVANAGARI_VISEMES: dict[str, tuple[str, float]] = {
+    "अ": ("AA", 1.5), "आ": ("AA", 1.7), "ा": ("AA", 1.6),
+    "इ": ("EE", 1.4), "ई": ("EE", 1.6), "ि": ("EE", 1.3), "ी": ("EE", 1.5),
+    "ए": ("EE", 1.4), "ऐ": ("AA", 1.4), "े": ("EE", 1.3), "ै": ("AA", 1.4),
+    "उ": ("OO", 1.5), "ऊ": ("OO", 1.7), "ु": ("OO", 1.4), "ू": ("OO", 1.6),
+    "ओ": ("OO", 1.6), "औ": ("OO", 1.6), "ो": ("OO", 1.5), "ौ": ("OO", 1.5),
+    "प": ("MBP", 0.7), "फ": ("FV", 0.8), "ब": ("MBP", 0.7), "भ": ("MBP", 0.7), "म": ("MBP", 0.75),
+    "व": ("FV", 0.8),
+}
+
+
 def word_to_visemes(word: str) -> list[tuple[str, float]]:
-    """Convert an English word into weighted articulatory visemes (MBP, FV, EE, OO, AA, MID)."""
+    """Convert an English or Devanagari Hindi word into weighted articulatory visemes."""
+    if re.search(r"[\u0900-\u097F]", word):
+        seq_hi: list[tuple[str, float]] = []
+        for ch in word:
+            if "\u0900" <= ch <= "\u097F":
+                vis, wt = _DEVANAGARI_VISEMES.get(ch, ("MID", 0.65))
+                if seq_hi and seq_hi[-1][0] == vis:
+                    seq_hi[-1] = (vis, min(2.2, seq_hi[-1][1] + wt * 0.35))
+                else:
+                    seq_hi.append((vis, wt))
+        return seq_hi or [("MID", 1.0)]
+
     w = re.sub(r"[^a-z]", "", word.lower())
     if not w:
         return [("REST", 1.0)]
@@ -284,7 +307,12 @@ class TTSEngine:
             return {"audio_base64": None, "visemes": [], "mime": "audio/mpeg"}
 
         use_cloner = engine == "cloned" and self.config.cloned_voice_enabled and self.cloner.is_available
-        base_voice = "en-IN-PrabhatNeural" if use_cloner else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
+        lang_style = detect_language_style(spoken)
+        is_hi = lang_style in ("hindi", "hinglish")
+        hi_voice = self.config.hindi_tts_voice or "hi-IN-MadhurNeural"
+        en_voice = "en-IN-PrabhatNeural" if use_cloner else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
+        base_voice = hi_voice if is_hi else en_voice
+        source_key = "hi" if is_hi else "en"
         try:
             mp3_bytes, boundaries = await self._synth_edge_raw(
                 spoken,
@@ -297,7 +325,10 @@ class TTSEngine:
             if use_cloner:
                 try:
                     mp3_bytes = await asyncio.to_thread(
-                        self.cloner.convert_mp3_bytes, mp3_bytes, expression=expression
+                        self.cloner.convert_mp3_bytes,
+                        mp3_bytes,
+                        expression=expression,
+                        source_key=source_key,
                     )
                 except Exception as exc:
                     logger.warning("Neural voice clone conversion failed (%s); using expressive base voice.", exc)
@@ -306,7 +337,9 @@ class TTSEngine:
                 "audio_base64": base64.b64encode(mp3_bytes).decode("ascii"),
                 "visemes": build_viseme_timeline(boundaries),
                 "mime": "audio/mpeg",
-                "voice": "My Voice (Cloned)" if use_cloner else base_voice,
+                "voice": f"My Voice (Cloned/{source_key})" if use_cloner else base_voice,
+                "base_voice": base_voice,
+                "language": lang_style,
                 "expression": expression,
             }
         except Exception as exc:
@@ -438,14 +471,22 @@ class TTSEngine:
             return False
         tmp_path = Path(tempfile.gettempdir()) / f"jarvis_tts_{uuid.uuid4().hex[:10]}.mp3"
         try:
-            base_voice = "en-IN-PrabhatNeural" if clone else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
+            lang_style = detect_language_style(text)
+            is_hi = lang_style in ("hindi", "hinglish")
+            base_voice = (self.config.hindi_tts_voice or "hi-IN-MadhurNeural") if is_hi else (
+                "en-IN-PrabhatNeural" if clone else (self.config.edge_tts_voice or "en-IN-PrabhatNeural")
+            )
+            source_key = "hi" if is_hi else "en"
             mp3_bytes, _ = await self._synth_edge_raw(text, voice=base_voice, expression=expression)
             if not mp3_bytes:
                 return False
             if clone and self.cloner.is_available:
                 try:
                     mp3_bytes = await asyncio.to_thread(
-                        self.cloner.convert_mp3_bytes, mp3_bytes, expression=expression
+                        self.cloner.convert_mp3_bytes,
+                        mp3_bytes,
+                        expression=expression,
+                        source_key=source_key,
                     )
                 except Exception as exc:
                     logger.warning("Cloned playback fallback (%s).", exc)

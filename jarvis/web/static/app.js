@@ -11,7 +11,7 @@
   const canvas = $("avatarCanvas");
   const ctx = canvas.getContext("2d");
 
-  const ASSET_VER = "28";
+  const ASSET_VER = "31";
   const TURNTABLE_COUNT = 72;
   const IS_STATIC_DEMO =
     Boolean(window.JARVIS_STATIC_MODE) ||
@@ -197,6 +197,7 @@
     turnBuffer: "",
     turnTimer: null,
     turnSource: "ptt_voice",
+    sttLang: "en-IN",
   };
 
   // Preload all 10 calibrated expressions + blinking
@@ -1184,6 +1185,47 @@
     speakFallbackSynth(text, onDone);
   }
 
+  let cachedBrowserVoices = [];
+  if ("speechSynthesis" in window) {
+    const refreshVoices = () => {
+      try {
+        cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
+      } catch (_) {}
+    };
+    refreshVoices();
+    window.speechSynthesis.onvoiceschanged = refreshVoices;
+  }
+
+  function pickIndianMaleBrowserVoice(isHindi) {
+    const voices = cachedBrowserVoices.length
+      ? cachedBrowserVoices
+      : (window.speechSynthesis.getVoices() || []);
+    if (!voices.length) return null;
+    const isFemaleName = (n) => /female|swara|neerja|heera|kalpana|zira|samantha|aria|jenny|sonia|libby|natasha|ava|emma|veena/i.test(n);
+    const isMaleName = (n) => /prabhat|madhur|ravi|hemant|male|ryan|daniel|george|andrew|guy|david|mark|arjun/i.test(n);
+    const score = (v) => {
+      const lang = String(v.lang || "");
+      const name = String(v.name || "");
+      let s = 0;
+      if (isHindi) {
+        if (/^hi-IN$/i.test(lang)) s += 60;
+        else if (/^en-IN$/i.test(lang)) s += 42;
+        else if (/^hi/i.test(lang)) s += 35;
+      } else {
+        if (/^en-IN$/i.test(lang)) s += 60;
+        else if (/^hi-IN$/i.test(lang)) s += 45;
+        else if (/^en-GB$/i.test(lang)) s += 20;
+        else if (/^en/i.test(lang)) s += 12;
+      }
+      if (/prabhat|madhur|ravi|hemant/i.test(name)) s += 50;
+      else if (isMaleName(name)) s += 28;
+      if (isFemaleName(name)) s -= 45;
+      if (/natural|online|google/i.test(name)) s += 10;
+      return s;
+    };
+    return [...voices].sort((a, b) => score(b) - score(a))[0] || null;
+  }
+
   function speakFallbackSynth(text, onDone) {
     if (!("speechSynthesis" in window)) {
       onDone();
@@ -1191,14 +1233,12 @@
     }
     try {
       const utter = new SpeechSynthesisUtterance(text);
-      const voices = window.speechSynthesis.getVoices();
-      const preferred =
-        voices.find((v) => /en-GB/i.test(v.lang) && /male|ryan|george|daniel/i.test(v.name)) ||
-        voices.find((v) => /en-GB/i.test(v.lang)) ||
-        voices.find((v) => /en/i.test(v.lang));
+      const isHindi = /[\u0900-\u097F]/.test(text);
+      utter.lang = isHindi ? "hi-IN" : "en-IN";
+      const preferred = pickIndianMaleBrowserVoice(isHindi);
       if (preferred) utter.voice = preferred;
-      utter.rate = 1.0;
-      utter.pitch = 0.96;
+      utter.rate = 0.98;
+      utter.pitch = 0.92;
       utter.onend = onDone;
       utter.onerror = onDone;
       window.speechSynthesis.speak(utter);
@@ -1361,7 +1401,13 @@
     if (/\b(?:roll a dice|roll a die|roll dice)\b/i.test(low)) {
       return deliverStaticReply(`You rolled a ${1 + Math.floor(Math.random() * 6)}!`, "happy", "jarvis");
     }
-    if (/\b(?:what time|current time|today'?s date|what date)\b/i.test(low)) {
+    if (/^(?:क्या\s+हाल\s+है|क्या\s+हाल|कैसे\s+हो|नमस्ते|नमस्कार|और\s+भाई|सब\s+बढ़िया)$/.test(cleaned.replace(/[.!?।]+$/g, "").trim())) {
+      return deliverStaticReply("सब बढ़िया है भाई! आप बताओ, आज क्या चल रहा है?", "smiling", "jarvis");
+    }
+    if (/^(?:kya\s+haal\s+hai|kya\s+haal|kaise\s+ho|aur\s+bhai|sab\s+badhiya|kya\s+chal\s+raha\s+hai)(?:\s+(?:bhai|yaar|bro|dost))?$/i.test(low)) {
+      return deliverStaticReply("Sab badhiya hai bhai! Tum batao, aaj kya chal raha hai?", "smiling", "jarvis");
+    }
+    if (/\b(?:what time|current time|today'?s date|what date|kitne\s+baje|time\s+kya\s+hua)\b|(?:कितने\s+बजे|समय\s+क्या\s+हुआ)/i.test(low)) {
       const now = new Date();
       return deliverStaticReply(`It is ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} on ${now.toDateString()}.`, "smiling", "clock");
     }
@@ -1371,8 +1417,10 @@
       return deliverStaticReply(`Switching to ${expr} mode!`, expr, "expression");
     }
 
-    // Open websites / YouTube / Google directly
-    const openMatch = cleaned.match(/^(?:open|launch|go\s+to|visit)\s+(?:the\s+)?(.+)$/i);
+    // Open websites / YouTube / Google directly (English + Hinglish)
+    const openMatch =
+      cleaned.match(/^(?:open|launch|go\s+to|visit)\s+(?:the\s+)?(.+)$/i) ||
+      cleaned.match(/^(.+?)\s+(?:khol\s+do|kholo|open\s+karo)$/i);
     if (openMatch) {
       const target = openMatch[1].trim().replace(/[.!?]+$/, "");
       const tLow = target.toLowerCase();
@@ -1395,10 +1443,12 @@
       });
     }
 
-    // Live Weather via Open-Meteo (CORS-enabled, zero API key)
-    const wxMatch = low.match(/\b(?:weather|temperature|forecast)(?:\s+(?:in|for|at)\s+([a-z\s,]+?))?(?:\s+(?:right\s+now|currently|today|now|outside))?$/i);
+    // Live Weather via Open-Meteo (English + Hinglish, CORS-enabled, zero API key)
+    const wxMatch =
+      low.match(/^(?:(?:bhai|yaar|jarvis)[\s,]+)?([a-z\s,]+?)\s+(?:ka|ki|mein|me)\s+(?:weather|temperature|mausam)(?:\s+(?:batao|kaisa\s+hai|kya\s+hai))?$/i) ||
+      low.match(/\b(?:weather|temperature|forecast|mausam)(?:\s+(?:in|for|at)\s+([a-z\s,]+?))?(?:\s+(?:right\s+now|currently|today|now|outside|batao|kaisa\s+hai))?$/i);
     if (wxMatch) {
-      const city = ((wxMatch[1] || "Jabalpur").replace(/\s+(?:right\s+now|currently|today|now|outside)$/i, "")).trim();
+      const city = ((wxMatch[1] || "Jabalpur").replace(/\s+(?:right\s+now|currently|today|now|outside|batao|kaisa\s+hai|kya\s+hai)$/i, "")).trim();
       try {
         const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`).then((r) => r.json());
         const loc = (geo.results || [])[0];
@@ -1441,10 +1491,10 @@
       } catch (_) {}
     }
 
-    // Live Conversational AI Chat (Pollinations anonymous GPT-OSS 20B — zero API key!)
+    // Live Conversational AI Chat (Pollinations anonymous GPT-OSS 20B — mirrors English/Hindi/Hinglish!)
     try {
       const sysPrompt =
-        "You are JARVIS, a personal voice assistant. Keep replies natural, warm, and concise (1-2 short sentences like talking to a sharp friend). Never dump encyclopedia facts on casual chat.";
+        "You are JARVIS, a personal voice assistant. Mirror the user's language naturally (Devanagari Hindi for Hindi, casual Roman Hinglish for Hinglish, English for English). Keep replies warm and concise (1-2 short sentences like talking to a sharp friend). Never dump encyclopedia facts on casual chat.";
       const msgs = [{ role: "system", content: sysPrompt }, ...staticChatHistory.slice(-12)];
       const resp = await fetch("https://text.pollinations.ai/openai", {
         method: "POST",
@@ -1635,6 +1685,12 @@
       avatar.speakEnabled = !!status.config.speak_responses;
       $("btnVoice").classList.toggle("active", avatar.speakEnabled);
       $("btnVoice").textContent = avatar.speakEnabled ? "🔊 Voice ON" : "🔇 Voice OFF";
+      if (status.config.language) {
+        avatar.sttLang = status.config.language;
+        if ($("btnLangToggle")) {
+          $("btnLangToggle").textContent = avatar.sttLang.toLowerCase().startsWith("hi") ? "🌐 HI-IN" : "🌐 EN-IN";
+        }
+      }
     }
     if (status.pending_confirmation) showConfirm(status.pending_confirmation);
     setState(status.state || "idle");
@@ -1781,11 +1837,14 @@
     "from", "into", "by", "um", "uh", "erm", "hmm", "like", "well", "open",
     "launch", "search", "remind", "remember", "explain", "define", "tell", "play",
     "set", "change", "adjust", "turn", "switch", "run", "delete", "kill", "thinking", "want",
+    "aur", "ya", "lekin", "par", "kyunki", "toh", "phir", "mein", "ka", "ki", "ke", "ko", "se", "khol", "batao",
+    "और", "या", "लेकिन", "क्योंकि", "तो", "फिर", "में", "का", "की", "के", "को", "से",
   ]);
   const TURN_SHORT_COMPLETE = new Set([
     "stop", "cancel", "yes", "no", "confirm", "abort", "help", "mute", "unmute",
     "hi", "hello", "hey", "jarvis", "hey jarvis", "ok jarvis", "bye", "goodbye",
     "pause", "resume", "next", "previous",
+    "namaste", "नमस्ते", "रुको", "हाँ", "नहीं",
   ]);
   const TURN_NOISE_FILLERS = new Set(["uh", "um", "erm", "hm", "hmm", "ah", "oh", "eh", "mm", "mhm"]);
 
@@ -1798,7 +1857,8 @@
   }
 
   function computeTurnWaitMs(text) {
-    const clean = (text || "").toLowerCase().replace(/[^\w\s']/g, "").trim();
+    // Unicode-aware strip preserves Devanagari Hindi & English characters cleanly
+    const clean = (text || "").toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s']/gu, "").trim();
     if (!clean) return 850;
     if (TURN_SHORT_COMPLETE.has(clean)) return 420;
     const words = clean.split(/\s+/);
@@ -1817,7 +1877,7 @@
     const text = (avatar.turnBuffer || "").trim();
     avatar.turnBuffer = "";
     if (!text) return;
-    const norm = text.toLowerCase().replace(/[^\w\s]/g, "").trim();
+    const norm = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, "").trim();
     if (!norm || (norm.length < 2 && !/^\d+$/.test(norm)) || TURN_NOISE_FILLERS.has(norm)) {
       $("liveYou").textContent = "";
       return;
@@ -1847,7 +1907,7 @@
     await ensureMicAnalyser();
 
     const rec = new SpeechRecognitionAPI();
-    rec.lang = "en-US";
+    rec.lang = avatar.sttLang || "en-IN";
     rec.interimResults = true;
     rec.continuous = continuous;
     avatar.turnSource = continuous ? "hands_free_voice" : "ptt_voice";
@@ -2035,6 +2095,25 @@
     }
   });
 
+  if ($("btnLangToggle")) {
+    $("btnLangToggle").addEventListener("click", async () => {
+      avatar.sttLang = avatar.sttLang === "hi-IN" ? "en-IN" : "hi-IN";
+      $("btnLangToggle").textContent = avatar.sttLang === "hi-IN" ? "🌐 HI-IN" : "🌐 EN-IN";
+      $("liveJarvis").textContent =
+        avatar.sttLang === "hi-IN"
+          ? "Hindi / Hinglish voice recognition active (hi-IN) — बोलिए भाई!"
+          : "Indian English & Hinglish voice recognition active (en-IN).";
+      if (!IS_STATIC_DEMO) {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language: avatar.sttLang }),
+        }).catch(() => { });
+      }
+      if (avatar.handsFree) startRecognition({ continuous: true });
+    });
+  }
+
   $("btnStop").addEventListener("click", interruptAll);
 
   if ($("btnChatToggle")) {
@@ -2152,6 +2231,11 @@
       if (st && st.persona && $("llmPersonaSelect")) {
         $("llmPersonaSelect").value = st.persona.name || "calm";
       }
+      if (st && st.config && $("llmVoiceSelect")) {
+        $("llmVoiceSelect").value = st.config.cloned_voice_enabled
+          ? "cloned"
+          : (st.config.edge_tts_voice || "en-IN-PrabhatNeural");
+      }
       if (diag.active) {
         updateBrainBadge(diag.active);
         $("llmCurrentStatus").textContent = `Active: ${diag.active.provider} (${diag.active.model}) • Web Knowledge always ready`;
@@ -2193,11 +2277,23 @@
       test_connection: !!testConnection,
     };
     try {
-      if ($("llmPersonaSelect")) {
+      const settingsPayload = {};
+      if ($("llmPersonaSelect")) settingsPayload.persona = $("llmPersonaSelect").value;
+      if ($("llmVoiceSelect")) {
+        const vChoice = $("llmVoiceSelect").value;
+        if (vChoice === "cloned") {
+          settingsPayload.cloned_voice_enabled = true;
+          settingsPayload.edge_tts_voice = "en-IN-PrabhatNeural";
+        } else {
+          settingsPayload.cloned_voice_enabled = false;
+          settingsPayload.edge_tts_voice = vChoice;
+        }
+      }
+      if (Object.keys(settingsPayload).length) {
         await fetch("/api/settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ persona: $("llmPersonaSelect").value }),
+          body: JSON.stringify(settingsPayload),
         }).catch(() => {});
       }
       const res = await fetch("/api/llm/configure", {

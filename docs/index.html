@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>J.A.R.V.I.S. — Interactive 360° Living Voice Avatar</title>
-  <link rel="stylesheet" href="./styles.css?v=28" />
+  <link rel="stylesheet" href="./styles.css?v=31" />
 </head>
 <body>
   <!-- Full-Viewport Canvas: Face 360° | Liquid Glass Orb | Spatial Halo | Floating Pill -->
@@ -102,6 +102,16 @@
           </select>
         </label>
 
+        <label class="llm-field">
+          <span>Assistant Voice</span>
+          <select id="llmVoiceSelect">
+            <option value="en-IN-PrabhatNeural">🇮🇳 Indian Male — Prabhat &amp; Madhur (Default)</option>
+            <option value="hi-IN-MadhurNeural">🇮🇳 Hindi / Hinglish Male — Madhur Neural</option>
+            <option value="cloned">🎙 My Cloned Voice (My Voice.mpeg)</option>
+            <option value="en-GB-RyanNeural">🇬🇧 British Male — Ryan Neural</option>
+          </select>
+        </label>
+
         <div class="stack-chips" id="stackChips">
           <span class="stack-chip">🧠 4 Sub-Agents</span>
           <span class="stack-chip">🎙 Semantic Turn VAD</span>
@@ -175,6 +185,9 @@
       <button class="pill-btn active" id="btnVoice" title="Toggle Spoken Voice Output">
         🔊 Voice ON
       </button>
+      <button class="pill-btn" id="btnLangToggle" title="Switch Mic Recognition between Hinglish (EN-IN) and Hindi (HI-IN)">
+        🌐 EN-IN
+      </button>
       <button class="pill-btn danger" id="btnStop" title="Stop Speaking (Esc)">
         ⏹ Stop
       </button>
@@ -227,6 +240,6 @@
   </aside>
 
   <script>window.JARVIS_STATIC_MODE = true;</script>
-  <script src="./app.js?v=28"></script>
+  <script src="./app.js?v=31"></script>
 </body>
 </html>

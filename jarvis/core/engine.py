@@ -41,7 +41,7 @@ _NOISE_FILLERS = {"uh", "um", "erm", "hm", "hmm", "ah", "oh", "eh", "mm", "mhm"}
 def _is_stt_noise(text: str, source: str) -> bool:
     if source not in _VOICE_SOURCES:
         return False
-    norm = re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+    norm = re.sub(r"[^\w\s\u0900-\u097F]", "", (text or "").lower()).strip()
     if not norm:
         return True
     if len(norm) < 2 and not norm.isdigit():
@@ -401,8 +401,12 @@ class JarvisEngine:
                 "tool_events": [],
             }
 
-        # Print & log the exact user transcript reaching Python before hitting the brain/LLM
-        print(f"TRANSCRIPT: {cleaned} (source={source})", flush=True)
+        # Print & log the exact user transcript reaching Python (UTF-8 safe on Windows CP1252 consoles!)
+        try:
+            print(f"TRANSCRIPT: {cleaned} (source={source})", flush=True)
+        except UnicodeEncodeError:
+            safe_line = f"TRANSCRIPT: {cleaned} (source={source})".encode("utf-8", errors="replace").decode("ascii", errors="replace")
+            print(safe_line, flush=True)
         logger.info("TRANSCRIPT: %s (source=%s)", cleaned, source)
 
         # Ignore tiny background noise / lone hesitation fillers from speech-to-text

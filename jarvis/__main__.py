@@ -5,9 +5,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import sys
 import threading
 import time
 import webbrowser
+
+# Ensure UTF-8 console I/O on Windows so Devanagari Hindi & emoji logs never garble or raise UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 from jarvis.cli.terminal import print_diagnostics, run_cli_repl, run_voice_only
 from jarvis.config import JarvisConfig

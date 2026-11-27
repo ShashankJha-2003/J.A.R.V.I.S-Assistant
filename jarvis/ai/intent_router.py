@@ -319,8 +319,33 @@ class IntentRouter:
         if re.search(r"\b(?:what can you do|your capabilities|list skills|help me|^help$)\b", low):
             return IntentMatch("jarvis_capabilities", {})
 
-        # Time & Date
-        if re.search(r"\b(?:what\s+(?:time|day|date)\s+is\s+it|what(?:'s|\s+is)\s+(?:the\s+)?(?:time|date|day)|current\s+time|today'?s\s+date|tell\s+me\s+the\s+(?:time|date))\b", low):
+        if re.search(r"^(?:क्या\s+हाल\s+है|क्या\s+हाल|कैसे\s+हो|नमस्ते|नमस्कार|और\s+भाई|सब\s+बढ़िया)$", raw.strip(" .!?।")):
+            return IntentMatch(
+                "",
+                direct_reply=random.choice([
+                    "सब बढ़िया है भाई! आप बताओ, आज क्या चल रहा है?",
+                    "एकदम मस्त हूँ यार! बोलो, आज क्या प्लान है?",
+                    "नमस्ते भाई! सब फर्स्ट क्लास है, आपका दिन कैसा चल रहा है?",
+                ]),
+                expression="smiling",
+            )
+        if re.search(r"^(?:kya\s+haal\s+hai|kya\s+haal|kaise\s+ho|aur\s+bhai|sab\s+badhiya|kya\s+chal\s+raha\s+hai)(?:\s+(?:bhai|yaar|bro|dost))?$", low):
+            return IntentMatch(
+                "",
+                direct_reply=random.choice([
+                    "Sab badhiya hai bhai! Tum batao, aaj kya chal raha hai?",
+                    "Ekdum mast hoon yaar! Bolo, aaj ka kya plan hai?",
+                ]),
+                expression="smiling",
+            )
+
+        # Time & Date (English + Hindi/Hinglish)
+        if re.search(
+            r"\b(?:what\s+(?:time|day|date)\s+is\s+it|what(?:'s|\s+is)\s+(?:the\s+)?(?:time|date|day)|"
+            r"current\s+time|today'?s\s+date|tell\s+me\s+the\s+(?:time|date)|"
+            r"kitne\s+baje|time\s+kya\s+hua|samay\s+kya\s+hua)\b|(?:कितने\s+बजे|समय\s+क्या\s+हुआ)",
+            low,
+        ):
             return IntentMatch("get_time_and_date", {})
 
         # System Telemetry
@@ -391,14 +416,24 @@ class IntentRouter:
         if m:
             return IntentMatch("manage_tasks", {"action": "delete", "task_id": int(m.group(1))})
 
-        # Weather (cleanly strip trailing temporal words like "right now", "today", "currently")
+        # Weather (check Hinglish '<city> ka/mein weather/mausam' FIRST so optional-city English regex doesn't shadow it)
         m = re.search(
-            r"\b(?:weather|temperature|forecast)(?:\s+(?:in|for|at)\s+([a-zA-Z\s,]+?))?"
-            r"(?:\s+(?:right\s+now|currently|today|now|outside))?$",
+            r"^(?:(?:bhai|yaar|jarvis)[\s,]+)?([a-zA-Z\s,]+?)\s+(?:ka|ki|mein|me)\s+"
+            r"(?:weather|temperature|mausam)(?:\s+(?:batao|kaisa\s+hai|kya\s+hai|dikhao))?$",
             low,
         )
+        if not m:
+            m = re.search(
+                r"\b(?:weather|temperature|forecast|mausam)(?:\s+(?:in|for|at)\s+([a-zA-Z\s,]+?))?"
+                r"(?:\s+(?:right\s+now|currently|today|now|outside|batao|kaisa\s+hai))?$",
+                low,
+            )
         if m:
-            city = re.sub(r"\s+(?:right\s+now|currently|today|now|outside)$", "", (m.group(1) or "").strip()).strip()
+            city = re.sub(
+                r"\s+(?:right\s+now|currently|today|now|outside|batao|kaisa\s+hai|kya\s+hai)$",
+                "",
+                (m.group(1) or "").strip(),
+            ).strip()
             return IntentMatch("get_weather", {"city": city})
 
         # News (ignore casual banter like "good news", "bad news", "no news")
@@ -518,8 +553,17 @@ class IntentRouter:
         if m:
             return IntentMatch("search_workspace_files", {"pattern": m.group(1).strip()})
 
-        # Open apps or websites ("open google", "open youtube", "go to instagram", "visit github", "open notepad")
+        # Open apps or websites (English + Hinglish: "open google", "youtube khol do", "notepad open karo")
         m = re.match(r"^(open|launch|start|run|go\s+to|visit|browse)\s+(?:the\s+)?(.+)$", raw, re.IGNORECASE)
+        if not m:
+            hm = re.match(r"^(.+?)\s+(?:khol\s+do|kholo|open\s+karo|chalu\s+karo)$", raw.strip(" .!?"), re.IGNORECASE)
+            if hm:
+                target = hm.group(1).strip().rstrip(" .!?")
+                t_low = target.lower()
+                if t_low in SITE_SHORTCUTS or t_low.startswith(("http://", "https://", "www.")):
+                    return IntentMatch("web_search_and_open", {"query": target, "platform": "url"})
+                if t_low in APP_CATALOG or len(t_low.split()) <= 3:
+                    return IntentMatch("open_application", {"app_name": target})
         if m:
             verb = m.group(1).lower()
             target = m.group(2).strip().rstrip(" .!?")

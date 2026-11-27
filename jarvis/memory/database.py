@@ -117,8 +117,8 @@ class JarvisDatabase:
                     session_id,
                     role,
                     content,
-                    json.dumps(tool_calls) if tool_calls else None,
-                    json.dumps(metadata) if metadata else None,
+                    json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+                    json.dumps(metadata, ensure_ascii=False) if metadata else None,
                     now,
                 ),
             )

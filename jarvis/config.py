@@ -84,18 +84,19 @@ class JarvisConfig:
 
     # Voice Engine (STT + VAD + Wake + TTS)
     stt_engine: str = "auto"  # auto | faster_whisper | vosk | deepgram | assemblyai | groq_whisper | openai_whisper | google
-    whisper_model: str = "base.en"
+    whisper_model: str = "base"
     vosk_model_path: str = ""
     deepgram_api_key: str = ""
     assemblyai_api_key: str = ""
     picovoice_access_key: str = ""
     vad_engine: str = "auto"  # auto | silero | energy
-    language: str = "en-US"
+    language: str = "en-IN"  # en-IN (Indian English/Hinglish) | hi-IN (Hindi Devanagari) | en-US
 
     tts_engine: str = "auto"  # auto | cloned | edge | elevenlabs | cartesia | piper | kokoro | pyttsx3 | none
-    cloned_voice_enabled: bool = True
+    cloned_voice_enabled: bool = False
     cloned_voice_path: Path = field(default_factory=lambda: PROJECT_ROOT / "My Voice.mpeg")
     edge_tts_voice: str = "en-IN-PrabhatNeural"
+    hindi_tts_voice: str = "hi-IN-MadhurNeural"
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "pNInz6obpgDQGcFmaJgB"
     cartesia_api_key: str = ""
@@ -191,9 +192,11 @@ class JarvisConfig:
             "ollama_url",
             "ollama_model",
             "stt_engine",
+            "language",
             "tts_engine",
             "cloned_voice_enabled",
             "edge_tts_voice",
+            "hindi_tts_voice",
             "tts_rate",
             "tts_volume",
             "speak_responses",
@@ -347,17 +350,18 @@ class JarvisConfig:
             ollama_model=os.getenv("JARVIS_OLLAMA_MODEL", "llama3.2").strip(),
             orchestrator=os.getenv("JARVIS_ORCHESTRATOR", "custom_asyncio").strip().lower(),
             stt_engine=os.getenv("JARVIS_STT_ENGINE", "auto").strip().lower(),
-            whisper_model=os.getenv("JARVIS_WHISPER_MODEL", "base.en").strip(),
+            whisper_model=os.getenv("JARVIS_WHISPER_MODEL", "base").strip(),
             vosk_model_path=os.getenv("JARVIS_VOSK_MODEL_PATH", "").strip(),
             deepgram_api_key=os.getenv("DEEPGRAM_API_KEY", "").strip(),
             assemblyai_api_key=os.getenv("ASSEMBLYAI_API_KEY", "").strip(),
             picovoice_access_key=os.getenv("PICOVOICE_ACCESS_KEY", "").strip(),
             vad_engine=os.getenv("JARVIS_VAD_ENGINE", "auto").strip().lower(),
-            language=os.getenv("JARVIS_LANGUAGE", "en-US").strip(),
+            language=os.getenv("JARVIS_LANGUAGE", "en-IN").strip(),
             tts_engine=os.getenv("JARVIS_TTS_ENGINE", "auto").strip().lower(),
-            cloned_voice_enabled=_env_bool("JARVIS_CLONED_VOICE_ENABLED", True),
+            cloned_voice_enabled=_env_bool("JARVIS_CLONED_VOICE_ENABLED", False),
             cloned_voice_path=_resolve_path("JARVIS_CLONED_VOICE_PATH", "My Voice.mpeg"),
             edge_tts_voice=os.getenv("JARVIS_EDGE_TTS_VOICE", "en-IN-PrabhatNeural").strip(),
+            hindi_tts_voice=os.getenv("JARVIS_HINDI_TTS_VOICE", "hi-IN-MadhurNeural").strip(),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
             elevenlabs_voice_id=os.getenv("JARVIS_ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB").strip(),
             cartesia_api_key=os.getenv("CARTESIA_API_KEY", "").strip(),

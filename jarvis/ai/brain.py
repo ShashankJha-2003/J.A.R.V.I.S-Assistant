@@ -12,7 +12,13 @@ from typing import Any
 from jarvis.ai.emotions import choose_reply_expression
 from jarvis.ai.intent_router import IntentRouter
 from jarvis.ai.providers import BaseLLMProvider, FreeOpenAIProvider, OllamaProvider, resolve_llm_provider
-from jarvis.ai.supervisor import AgentSupervisor, InteractionMode, SubAgentSpec, get_persona
+from jarvis.ai.supervisor import (
+    AgentSupervisor,
+    InteractionMode,
+    SubAgentSpec,
+    detect_language_style,
+    get_persona,
+)
 from jarvis.config import JarvisConfig
 from jarvis.skills.registry import SkillContext, SkillRegistry
 from jarvis.skills.web_intelligence import lookup_knowledge
@@ -103,6 +109,14 @@ class JarvisBrain:
             rag_block = "\nRelevant memories & local knowledge retrieved via RAG:\n" + "\n".join(lines) + "\n"
 
         persona = get_persona(self.config.persona)
+        lang_style = detect_language_style(user_text)
+        if lang_style == "hindi":
+            lang_rule = "Language: Reply in natural, conversational Hindi (Devanagari script, e.g. 'सब बढ़िया है भाई!')."
+        elif lang_style == "hinglish":
+            lang_rule = "Language: Reply in natural, casual Hinglish (Roman Hindi mixed with English, e.g. 'Mast gaya bhai, tum batao!')."
+        else:
+            lang_rule = "Language: Reply in natural conversational English (or mirror the user's language if they switch to Hindi/Hinglish)."
+
         if mode == "chat":
             role_line = (
                 "Current Turn Mode: CHAT (tools disabled). Reply directly and naturally using the "
@@ -117,16 +131,19 @@ class JarvisBrain:
             "Keep replies concise, natural, and conversational—like talking to a sharp colleague, "
             "not reading an encyclopedia.\n"
             f"Persona ({persona.label}): {persona.system_style}\n"
+            f"{lang_rule}\n"
             f"{role_line}\n"
             "Rules for voice, tools, and web search:\n"
             "1. Keep spoken replies to 1-2 short sentences unless the user explicitly asks for details.\n"
-            "2. For casual chat, banter, opinions, feelings, or everyday conversation: DO NOT call web_search or any tool. Just reply naturally and briefly.\n"
+            "2. For casual chat, banter, opinions, feelings, or everyday conversation (in English, Hindi, or Hinglish): DO NOT call web_search or any tool. Just reply naturally and briefly.\n"
             "3. Only call web_search / search_wikipedia / get_weather / get_top_news when the user explicitly asks for current facts, live info, news, prices, weather, or something that clearly requires outside lookup.\n"
             "4. Never latch onto a random word in a casual sentence and dump internet facts about it.\n"
             "5. Only call laptop/OS/workspace tools when the user asks you to open, launch, check, or control something on the system.\n"
             "6. Never fabricate tool results and avoid heavy markdown formatting in spoken answers.\n\n"
             "Examples:\n"
             '- User: "Hey, long day today." -> Reply directly in chat. No search.\n'
+            '- User: "Bhai aaj ka din kaisa gaya" -> Reply directly in natural Hinglish ("Mast gaya bhai, bas thoda busy tha! Tumhara din kaisa raha?"). No search.\n'
+            '- User: "क्या हाल है" -> Reply directly in natural Hindi ("सब बढ़िया है भाई! आप बताओ, आज क्या चल रहा है?"). No search.\n'
             '- User: "I was thinking about movies earlier." -> Ask what they are in the mood for. No search.\n'
             '- User: "What\'s the weather in Jabalpur right now?" -> Call get_weather(city="Jabalpur").\n'
             f"{rag_block}"
@@ -176,6 +193,65 @@ class JarvisBrain:
         def _pick(options: list[str]) -> str:
             fresh = [o for o in options if o != last_assistant]
             return random.choice(fresh or options)
+
+        lang_style = detect_language_style(user_text)
+        if lang_style == "hindi":
+            if re.search(r"थक|बुरा|खराब|परेशान", low):
+                reply = _pick([
+                    "थोड़ा आराम कर लो भाई, पानी पियो और बताओ क्या बात है — मैं यहीं हूँ।",
+                    "समझ सकता हूँ यार, दिन भारी था। चलो थोड़ा चिल करते हैं, कुछ म्यूज़िक चलाऊँ?",
+                ])
+                expr = "sad"
+            elif re.search(r"दिन|कैसा\s+गया|कैसा\s+रहा", low):
+                reply = _pick([
+                    "एकदम बढ़िया गया भाई! आप बताओ, आपका दिन कैसा रहा?",
+                    "मस्त चल रहा है यार! आज क्या खास किया आपने?",
+                ])
+                expr = "smiling"
+            else:
+                reply = _pick([
+                    "सब बढ़िया है भाई! आप बताओ, आज क्या चल रहा है?",
+                    "बिल्कुल मस्त हूँ यार! बोलो, आज क्या प्लान है?",
+                    "हाज़िर हूँ भाई! बताओ, किस बारे में बात करें या क्या मदद करूँ?",
+                ])
+                expr = "smiling"
+            return BrainReply(
+                text=reply,
+                provider="offline-chat",
+                model="conversational-router-v3",
+                expression=expr,
+                agent="conversational_chat",
+                mode="chat",
+            )
+
+        if lang_style == "hinglish":
+            if re.search(r"\b(?:thak|bura|kharab|pareshan|tension|stress)\b", low):
+                reply = _pick([
+                    "Thoda break le lo yaar, paani piyo aur batao kya scene hai — main yahin hoon.",
+                    "Samajh sakta hoon bhai, aaj heavy din lag raha hai. Thoda chill karein ya music lagaaun?",
+                ])
+                expr = "sad"
+            elif re.search(r"\b(?:din\s+kaisa|kaisa\s+gaya|kaisa\s+raha|aaj\s+ka\s+din)\b", low):
+                reply = _pick([
+                    "Mast gaya bhai, bas full standby pe active tha! Tumhara din kaisa raha?",
+                    "Ekdum badhiya gaya yaar! Tum batao, aaj kya khaas chal raha hai?",
+                ])
+                expr = "smiling"
+            else:
+                reply = _pick([
+                    "Sab badhiya hai bhai! Tum batao, kya chal raha hai aaj?",
+                    "Ekdum mast yaar! Bolo kya plan hai, chill karna hai ya kuch kaam karein?",
+                    "Sunn raha hoon bhai — aur batao, kya scene hai?",
+                ])
+                expr = "smiling"
+            return BrainReply(
+                text=reply,
+                provider="offline-chat",
+                model="conversational-router-v3",
+                expression=expr,
+                agent="conversational_chat",
+                mode="chat",
+            )
 
         if re.search(r"\b(?:long day|rough day|tough day|hectic|busy day|exhausting)\b", low):
             reply = _pick([

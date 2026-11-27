@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -115,10 +116,12 @@ class ConnectionManager:
     async def broadcast(self, message: dict[str, Any]) -> None:
         if not self._connections:
             return
+        # Send raw UTF-8 JSON (ensure_ascii=False) so Hindi Devanagari subtitles never arrive as \uXXXX escapes
+        encoded = json.dumps(message, ensure_ascii=False, default=str)
         dead: list[WebSocket] = []
         for ws in list(self._connections):
             try:
-                await ws.send_json(message)
+                await ws.send_text(encoded)
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -404,8 +407,8 @@ def create_app(engine: JarvisEngine | None = None, start_background_tasks: bool 
     async def websocket_hud(ws: WebSocket) -> None:
         await ws_manager.connect(ws)
         try:
-            hello_payload = {**jarvis_engine.get_status(), "ui_version": 28}
-            await ws.send_json({"type": "hello", "payload": hello_payload})
+            hello_payload = {**jarvis_engine.get_status(), "ui_version": 31}
+            await ws.send_text(json.dumps({"type": "hello", "payload": hello_payload}, ensure_ascii=False, default=str))
             while True:
                 msg = await ws.receive_json()
                 mtype = str(msg.get("type", "")).lower()

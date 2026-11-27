@@ -19,12 +19,16 @@ _TRAILING_INCOMPLETE_WORDS = {
     "um", "uh", "erm", "hmm", "like", "well",
     "open", "launch", "search", "remind", "remember", "explain", "define", "tell",
     "play", "set", "change", "adjust", "turn", "switch", "run", "delete", "kill",
+    # Hindi / Hinglish mid-thought pause tokens
+    "aur", "ya", "lekin", "par", "kyunki", "toh", "phir", "mein", "ka", "ki", "ke", "ko", "se", "khol", "batao",
+    "और", "या", "लेकिन", "क्योंकि", "तो", "फिर", "में", "का", "की", "के", "को", "से",
 }
 
 _COMPLETE_SHORT_COMMANDS = {
     "stop", "cancel", "yes", "no", "confirm", "abort", "help", "mute", "unmute",
     "hi", "hello", "hey", "jarvis", "hey jarvis", "ok jarvis", "bye", "goodbye",
     "pause", "resume", "next", "previous", "smile", "laugh",
+    "namaste", "नमस्ते", "रुको", "बंद करो", "हाँ", "नहीं",
 }
 
 

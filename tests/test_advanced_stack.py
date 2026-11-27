@@ -17,7 +17,13 @@ from fastapi.testclient import TestClient
 
 from jarvis.ai.intent_router import IntentRouter
 from jarvis.ai.providers import BaseLLMProvider, LLMResponse
-from jarvis.ai.supervisor import AgentSupervisor, PERSONA_PROFILES, classify_interaction_mode, get_persona
+from jarvis.ai.supervisor import (
+    AgentSupervisor,
+    PERSONA_PROFILES,
+    classify_interaction_mode,
+    detect_language_style,
+    get_persona,
+)
 from jarvis.config import JarvisConfig
 from jarvis.core.engine import JarvisEngine
 from jarvis.core.events import EventBus
@@ -379,3 +385,80 @@ def test_multi_emotional_cloned_voice_profiles_and_spectrogram() -> None:
     spec = compute_openvoice_spectrogram(dummy_wav)
     assert spec.ndim == 2 and spec.shape[1] == 513 and spec.shape[0] > 70
     assert np.isfinite(spec).all() and float(spec.min()) > 0.0
+
+
+@pytest.mark.asyncio
+async def test_hindi_hinglish_chat_first_utf8_ws_and_search_vs_action_routing(tmp_path: Path) -> None:
+    from jarvis.voice.tts import word_to_visemes
+
+    # 1. Language detection & mode classification (Chat-First Rule for Hindi & Hinglish)
+    assert detect_language_style("Bhai aaj ka din kaisa gaya") == "hinglish"
+    assert detect_language_style("क्या हाल है") == "hindi"
+    assert detect_language_style("What is the weather in Jabalpur right now?") == "english"
+
+    assert classify_interaction_mode("Bhai aaj ka din kaisa gaya") == "chat"
+    assert classify_interaction_mode("क्या हाल है") == "chat"
+    assert classify_interaction_mode("Jabalpur ka weather batao") == "search"
+    assert classify_interaction_mode("What's the weather in Jabalpur right now?") == "search"
+    assert classify_interaction_mode("YouTube khol do") == "device"
+    assert classify_interaction_mode("open notepad") == "device"
+    assert classify_interaction_mode("abhi kitne baje hain") == "device"
+
+    # Hinglish weather city extraction check ("Jabalpur ka weather batao" -> city="jabalpur")
+    router = IntentRouter()
+    m_hi_wx = router.match("Jabalpur ka weather batao")
+    assert m_hi_wx is not None and m_hi_wx.skill_name == "get_weather" and m_hi_wx.arguments["city"] == "jabalpur"
+    m_hi_yt = router.match("YouTube khol do")
+    assert m_hi_yt is not None and m_hi_yt.skill_name == "web_search_and_open" and m_hi_yt.arguments["query"].lower() == "youtube"
+
+    # Devanagari visemes produce real articulatory visemes (not empty REST)
+    hi_vis = word_to_visemes("नमस्ते")
+    assert hi_vis and any(v != "REST" for v, _ in hi_vis)
+
+    # 2. Casual Hindi/Hinglish chat bypasses web_search/OS tools and replies in matching language
+    cfg = JarvisConfig(
+        llm_provider="offline",
+        speak_responses=False,
+        data_dir=tmp_path / "data_hi",
+        knowledge_dir=tmp_path / "kb_hi",
+        captures_dir=tmp_path / "cap_hi",
+    )
+    eng = JarvisEngine(config=cfg, enable_tts=False)
+    await eng.start(start_background_tasks=False)
+
+    r_hinglish = await eng.handle_command("Bhai aaj ka din kaisa gaya", source="ptt_voice", speak=False)
+    assert r_hinglish["ok"] is True
+    assert r_hinglish["mode"] == "chat"
+    assert r_hinglish["tool_events"] == []
+    assert detect_language_style(r_hinglish["reply"]) == "hinglish"
+
+    r_hindi = await eng.handle_command("क्या हाल है", source="ptt_voice", speak=False)
+    assert r_hindi["ok"] is True
+    assert r_hindi["mode"] == "chat"
+    assert r_hindi["tool_events"] == []
+    assert detect_language_style(r_hindi["reply"]) == "hindi"
+
+    # 3. Safe laptop command executes cleanly with zero false web search
+    r_time = await eng.handle_command("abhi kitne baje hain", source="ptt_voice", speak=False)
+    assert r_time["ok"] is True
+    assert r_time["mode"] == "device"
+    assert len(r_time["tool_events"]) == 1
+    assert r_time["tool_events"][0]["skill"] == "get_time_and_date"
+
+    # 4. UTF-8 WebSocket wire payload check: raw Devanagari text with ZERO \uXXXX escapes or '?' glitches
+    app = create_app(engine=eng, start_background_tasks=False)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as ws:
+            _hello = ws.receive_text()
+            ws.send_json({"type": "command", "text": "क्या हाल है", "speak": False, "browser_audio": False})
+            raw_frames: list[str] = []
+            for _ in range(12):
+                frame = ws.receive_text()
+                raw_frames.append(frame)
+                if '"response_final"' in frame:
+                    break
+            resp_frame = next(f for f in raw_frames if '"response_final"' in f)
+            assert "\\u09" not in resp_frame
+            assert "भाई" in resp_frame or "यार" in resp_frame or "नमस्ते" in resp_frame
+
+    await eng.stop()

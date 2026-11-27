@@ -178,6 +178,7 @@ class NeuralVoiceCloner:
         self.target_se_cache = self.models_dir / "my_voice_se.npy"
         self.target_meta_cache = self.models_dir / "my_voice_se.meta"
         self.source_se_cache = self.models_dir / "base_speaker_se.npy"
+        self._source_se_map: dict[str, np.ndarray] = {}
 
         self._lock = threading.Lock()
         self._ref_sess: Any = None
@@ -336,7 +337,18 @@ class NeuralVoiceCloner:
                 logger.debug("Base speaker SE cache warmup skipped: %s", exc)
         return True
 
-    def convert_mp3_bytes(self, source_mp3_bytes: bytes, *, expression: str = "neutral") -> bytes:
+    def _source_cache_path(self, source_key: str) -> Path:
+        if source_key == "en":
+            return self.source_se_cache
+        return self.models_dir / f"base_speaker_{source_key}_se.npy"
+
+    def convert_mp3_bytes(
+        self,
+        source_mp3_bytes: bytes,
+        *,
+        expression: str = "neutral",
+        source_key: str = "en",
+    ) -> bytes:
         """Convert expressive base TTS MP3 bytes into the user's cloned voice MP3 bytes."""
         self._ensure_loaded()
         t0 = time.perf_counter()
@@ -347,16 +359,26 @@ class NeuralVoiceCloner:
 
         spec_t_f = compute_openvoice_spectrogram(src_wav)  # (T, 513)
 
-        # Use cached neutral base speaker SE when available so emotional prosody shifts are 100% preserved!
-        if self._source_se is not None:
+        # Use cached neutral base speaker SE per base voice ('en' vs 'hi') so emotional prosody is preserved
+        src_se = self._source_se_map.get(source_key)
+        if src_se is None:
+            cache_p = self._source_cache_path(source_key)
+            if cache_p.exists():
+                try:
+                    src_se = np.load(cache_p).astype(np.float32)
+                    self._source_se_map[source_key] = src_se
+                except Exception:
+                    src_se = None
+        if src_se is None and source_key == "en" and self._source_se is not None:
             src_se = self._source_se
-        else:
+            self._source_se_map["en"] = src_se
+        if src_se is None:
             ref_in = self._ref_sess.get_inputs()[0].name
             src_se = self._ref_sess.run(None, {ref_in: spec_t_f[None, :, :]})[0].astype(np.float32)
-            if (expression or "neutral").lower() == "neutral" and len(src_wav) >= SAMPLE_RATE * 2:
-                self._source_se = src_se
+            if (expression or "neutral").lower() in ("neutral", "smiling") and len(src_wav) >= SAMPLE_RATE * 2:
+                self._source_se_map[source_key] = src_se
                 try:
-                    np.save(self.source_se_cache, src_se)
+                    np.save(self._source_cache_path(source_key), src_se)
                 except Exception:
                     pass
 

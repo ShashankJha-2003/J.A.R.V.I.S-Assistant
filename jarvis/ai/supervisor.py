@@ -11,13 +11,52 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 InteractionMode = Literal["chat", "search", "device"]
+LanguageStyle = Literal["hindi", "hinglish", "english"]
+
+_DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
+
+_HINGLISH_STRONG_RE = re.compile(
+    r"\b(?:bhai|bhaiya|yaar|dost|namaste|namaskar|shukriya|dhanyawad|kaisa|kaisi|kaise|"
+    r"kya\s+haal|kya\s+chal|mausam|khabar|khol\s+do|batao|badhiya|badiya|mast|"
+    r"theek\s+hai|sab\s+theek|kitne\s+baje|thak\s+gaya|aaj\s+ka\s+din)\b",
+    re.IGNORECASE,
+)
+
+_HINGLISH_WORDS = {
+    "bhai", "bhaiya", "yaar", "dost", "kya", "haal", "kaisa", "kaisi", "kaise",
+    "aaj", "kal", "din", "raat", "gaya", "gayi", "chal", "raha", "rahi", "hai", "hain",
+    "nahi", "haan", "han", "accha", "achha", "badhiya", "badiya", "mast", "theek",
+    "batao", "bata", "khol", "karo", "kar", "mausam", "khabar", "kitne", "baje",
+    "tumhara", "mera", "meri", "apna", "namaste", "shukriya", "baat", "abhi",
+    "kuch", "bahut", "bohot", "thak", "chalo", "sun", "suno", "dekho", "aur", "toh",
+}
+
+
+def detect_language_style(utterance: str) -> LanguageStyle:
+    """Detect whether the user is speaking Devanagari Hindi, Roman Hinglish, or English."""
+    raw = (utterance or "").strip()
+    if not raw:
+        return "english"
+    if _DEVANAGARI_RE.search(raw):
+        return "hindi"
+    if _HINGLISH_STRONG_RE.search(raw):
+        return "hinglish"
+    tokens = re.findall(r"[a-zA-Z]+", raw.lower())
+    hits = sum(1 for tok in tokens if tok in _HINGLISH_WORDS)
+    if hits >= 2:
+        return "hinglish"
+    return "english"
+
 
 _CASUAL_PHRASE_RE = re.compile(
     r"\b(?:what(?:'s|\s+is)\s+up|whats\s+up|what\s+are\s+you\s+doing|what\s+do\s+you\s+think|"
     r"what(?:'s|\s+is)\s+on\s+your\s+mind|what\s+should\s+i|what(?:'s|\s+is)\s+going\s+on|"
     r"how\s+are\s+you|how(?:'s|\s+is)\s+it\s+going|tell\s+me\s+a\s+joke|good\s+news|bad\s+news|"
     r"great\s+news|no\s+news|long\s+day|thinking\s+about|in\s+the\s+mood|let'?s\s+chill|"
-    r"just\s+talking|want\s+to\s+chat|talk\s+to\s+me)\b",
+    r"just\s+talking|want\s+to\s+chat|talk\s+to\s+me|"
+    r"kya\s+haal|kaise\s+ho|kya\s+chal\s+raha|din\s+kaisa\s+gaya|aaj\s+ka\s+din|"
+    r"bahut\s+thak|bohot\s+thak|aur\s+bhai|sab\s+badhiya|mast\s+hai|namaste)\b|"
+    r"(?:क्या\s+हाल|कैसे\s+हो|कैसा\s+गया|क्या\s+चल\s+रहा|नमस्ते|सब\s+बढ़िया|बहुत\s+थक)",
     re.IGNORECASE,
 )
 
@@ -32,6 +71,7 @@ _DEVICE_MODE_RE = re.compile(
     r"next\s+(?:song|track|music|video)|previous\s+(?:song|track|music)|"
     r"list\s+(?:all\s+|open\s+)?windows|focus\s+.*?\s+window|minimize|maximize|switch\s+window|"
     r"(?:open|launch)\s+\w+|(?:go\s+to|visit|browse)\s+\w+|play\s+.+?\s+on\s+youtube|"
+    r"\w+\s+(?:khol\s+do|kholo|open\s+karo|chalu\s+karo)|"
     r"(?:turn|switch)\s+(?:on|off)\s+(?:the\s+)?\w+|smart\s+home|smart\s+devices?|home\s+assistant|iot|mqtt|esp32|"
     r"git\s+(?:status|branch|branches|log|diff|switch)|switch\s+(?:git\s+)?branch|checkout\s+branch|"
     r"pytest|run\s+(?:project\s+|unit\s+)?tests?|index\s+(?:my\s+)?(?:codebase|knowledge|docs|documents)|"
@@ -42,6 +82,7 @@ _DEVICE_MODE_RE = re.compile(
     r"(?:add|create|show|list|read|complete|finish|delete)\s+(?:a\s+|my\s+)?(?:tasks?|to-?do)|"
     r"remember\s+(?:that\s+)?|what\s+do\s+you\s+remember|recall\s+|search\s+my\s+(?:memory|knowledge|docs|rag)|"
     r"what\s+(?:time|day|date)\s+is\s+it|what(?:'s|\s+is)\s+(?:the\s+)?(?:time|date|day)|current\s+time|today'?s\s+date|"
+    r"kitne\s+baje|time\s+kya\s+hua|samay\s+kya\s+hua|"
     r"calculate|compute|evaluate|\b\d+\s*(?:\+|\-|\*|\/|\^|plus|minus|times|multiplied|divided)\s*\d+|"
     r"\b(?:times|multiplied\s+by|divided\s+by|plus|minus|sqrt)\b|"
     r"on\s+my\s+screen|see\s+my\s+screen|analyze\s+(?:my\s+)?screen|inspect\s+(?:my\s+)?screen|read\s+(?:my\s+)?screen|"
@@ -49,20 +90,21 @@ _DEVICE_MODE_RE = re.compile(
     r"(?:switch|set)\s+(?:persona|tone|mode)\s+to\s+(?:calm|crisp|witty|analytical)|"
     r"^(?:calm|crisp|witty|analytical)\s+(?:mode|persona|tone)|"
     r"(?:type|dictate)\s+\w+"
-    r")\b",
+    r")\b|(?:खोल\s+दो|खोलो|कितने\s+बजे|समय\s+क्या\s+हुआ)",
     re.IGNORECASE,
 )
 
 _SEARCH_LIVE_RE = re.compile(
     r"\b(?:"
-    r"weather|temperature|forecast|"
-    r"(?:latest|top|today'?s|breaking|tech|world|science)\s+news|\bheadlines\b|"
+    r"weather|temperature|forecast|mausam|"
+    r"(?:latest|top|today'?s|breaking|tech|world|science|taaza)\s+(?:news|khabar)|\bheadlines\b|"
     r"(?:read|get|show|check|give\s+me)\s+(?:the\s+)?news|"
     r"stock\s+price|share\s+price|price\s+of|bitcoin\s+price|crypto\s+price|gold\s+price|exchange\s+rate|"
     r"live\s+score|match\s+score|cricket\s+score|football\s+score|"
     r"search\s+(?:google|web|internet|online|github|youtube)\b|search\s+for\b|\bgoogle\s+\w+|"
-    r"look\s+up\b|\blookup\b|\bwikipedia\b|\bwiki\s+\w+|https?://|summarize\s+(?:https?://|www\.)"
-    r")\b",
+    r"look\s+up\b|\blookup\b|\bwikipedia\b|\bwiki\s+\w+|https?://|summarize\s+(?:https?://|www\.)|"
+    r"ke\s+baare\s+mein\s+batao"
+    r")\b|(?:मौसम|ताज़ा\s+खबर|ताजा\s+खबर|के\s+बारे\s+में\s+बताओ)",
     re.IGNORECASE,
 )
 

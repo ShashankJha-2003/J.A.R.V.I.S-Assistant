@@ -70,44 +70,53 @@ class STTEngine:
                 return pref
         return "browser_web_speech"
 
-    async def transcribe(self, audio: RecordedAudio) -> str:
+    async def transcribe(self, audio: RecordedAudio, *, language: str | None = None) -> str:
         engine = self.active_engine_name()
+        lang = (language or self.config.language or "en-IN").strip()
+        transcript = ""
         if engine == "deepgram":
-            return await self._transcribe_deepgram(audio)
-        if engine == "assemblyai":
-            return await self._transcribe_assemblyai(audio)
-        if engine == "faster_whisper":
-            return await asyncio.to_thread(self._transcribe_faster_whisper, audio)
-        if engine == "vosk":
-            return await asyncio.to_thread(self._transcribe_vosk, audio)
-        if engine == "groq_whisper":
-            return await self._transcribe_whisper_api(
+            transcript = await self._transcribe_deepgram(audio, language=lang)
+        elif engine == "assemblyai":
+            transcript = await self._transcribe_assemblyai(audio)
+        elif engine == "faster_whisper":
+            transcript = await asyncio.to_thread(self._transcribe_faster_whisper, audio, lang)
+        elif engine == "vosk":
+            transcript = await asyncio.to_thread(self._transcribe_vosk, audio)
+        elif engine == "groq_whisper":
+            transcript = await self._transcribe_whisper_api(
                 audio,
                 url="https://api.groq.com/openai/v1/audio/transcriptions",
                 api_key=self.config.groq_api_key,
                 model="whisper-large-v3-turbo",
+                language=lang,
             )
-        if engine == "openai_whisper":
-            return await self._transcribe_whisper_api(
+        elif engine == "openai_whisper":
+            transcript = await self._transcribe_whisper_api(
                 audio,
                 url=f"{self.config.openai_base_url}/audio/transcriptions",
                 api_key=self.config.openai_api_key,
                 model="whisper-1",
+                language=lang,
             )
-        if engine == "google":
-            return await asyncio.to_thread(self._transcribe_google_sr, audio)
-        return ""
+        elif engine == "google":
+            transcript = await asyncio.to_thread(self._transcribe_google_sr, audio, lang)
+        if transcript:
+            logger.info("RAW_STT (%s/%s): %s", engine, lang, transcript)
+        return transcript
 
-    async def _transcribe_deepgram(self, audio: RecordedAudio) -> str:
+    async def _transcribe_deepgram(self, audio: RecordedAudio, *, language: str = "en-IN") -> str:
         headers = {
             "Authorization": f"Token {self.config.deepgram_api_key}",
             "Content-Type": "audio/wav",
         }
-        params = {
+        params: dict[str, str] = {
             "model": "nova-2",
             "smart_format": "true",
-            "language": self.config.language.split("-")[0],
         }
+        if language.lower() in ("auto", "multi"):
+            params["detect_language"] = "true"
+        else:
+            params["language"] = language.split("-")[0]
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(
                 "https://api.deepgram.com/v1/listen",
@@ -155,7 +164,7 @@ class STTEngine:
                 await asyncio.sleep(0.4)
         return ""
 
-    def _transcribe_faster_whisper(self, audio: RecordedAudio) -> str:
+    def _transcribe_faster_whisper(self, audio: RecordedAudio, language: str = "en-IN") -> str:
         if WhisperModel is None:
             return ""
         if self._whisper_model is None:
@@ -169,7 +178,9 @@ class STTEngine:
             tmp.write(audio.wav_bytes)
             tmp_path = Path(tmp.name)
         try:
-            segments, _info = self._whisper_model.transcribe(str(tmp_path), beam_size=3)
+            # Allow auto language detection for multilingual Hindi/Hinglish/English speech
+            lang_arg = None if language.lower() in ("auto", "en-in", "hi-in") else language.split("-")[0]
+            segments, _info = self._whisper_model.transcribe(str(tmp_path), beam_size=3, language=lang_arg)
             return " ".join(seg.text.strip() for seg in segments).strip()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -190,9 +201,12 @@ class STTEngine:
         url: str,
         api_key: str,
         model: str,
+        language: str = "en-IN",
     ) -> str:
         files = {"file": ("speech.wav", audio.wav_bytes, "audio/wav")}
-        data = {"model": model, "language": self.config.language.split("-")[0]}
+        data: dict[str, str] = {"model": model}
+        if language.lower() not in ("auto", "en-in", "hi-in"):
+            data["language"] = language.split("-")[0]
         headers = {"Authorization": f"Bearer {api_key}"}
         async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(url, headers=headers, files=files, data=data)
@@ -200,15 +214,25 @@ class STTEngine:
             payload = resp.json()
         return str(payload.get("text", "")).strip()
 
-    def _transcribe_google_sr(self, audio: RecordedAudio) -> str:
+    def _transcribe_google_sr(self, audio: RecordedAudio, language: str = "en-IN") -> str:
         if sr is None:
             return ""
         recognizer = sr.Recognizer()
         sr_audio = sr.AudioData(audio.pcm16_bytes, audio.sample_rate, 2)
-        try:
-            return str(recognizer.recognize_google(sr_audio, language=self.config.language)).strip()
-        except sr.UnknownValueError:
-            return ""
-        except Exception as exc:
-            logger.warning("Google STT failed: %s", exc)
-            return ""
+        # Try configured Indian-English/Hindi locale first, then fallback to companion Hindi/Indian-English locale
+        langs = [language]
+        if language.lower() == "en-in":
+            langs.append("hi-IN")
+        elif language.lower() == "hi-in":
+            langs.append("en-IN")
+        for loc in langs:
+            try:
+                text = str(recognizer.recognize_google(sr_audio, language=loc)).strip()
+                if text:
+                    return text
+            except sr.UnknownValueError:
+                continue
+            except Exception as exc:
+                logger.warning("Google STT (%s) failed: %s", loc, exc)
+                break
+        return ""
